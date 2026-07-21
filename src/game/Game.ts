@@ -59,7 +59,7 @@ export class Game {
 
   private readonly backgroundMusic = new Audio(backgroundMusicUrl);
   private readonly soundPools = new Map<string, HTMLAudioElement[]>();
-  private soundEnabled = true;
+  private soundEnabled = false;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly engine: Engine;

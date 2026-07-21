@@ -555,20 +555,20 @@ export class RoadController {
       1.12;
 
     const treeInterval = this.graphicsQuality === "high"
-      ? 4
-      : this.graphicsQuality === "medium"
-        ? 6
-        : 8;
-    const rockInterval = this.graphicsQuality === "high"
       ? 5
       : this.graphicsQuality === "medium"
-        ? 7
+        ? 8
         : 10;
-    const distantSceneryStride = this.graphicsQuality === "high"
-      ? 1
+    const rockInterval = this.graphicsQuality === "high"
+      ? 7
       : this.graphicsQuality === "medium"
-        ? 2
-        : 3;
+        ? 9
+        : 13;
+    const distantSceneryStride = this.graphicsQuality === "high"
+      ? 2
+      : this.graphicsQuality === "medium"
+        ? 3
+        : 4;
 
     for (
       let index = 0;

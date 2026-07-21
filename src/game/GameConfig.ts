@@ -74,8 +74,8 @@ export const GAME_CONFIG = {
     /**
      * 짧은 도로 조각을 이어 붙여 곡선과 언덕을 표현합니다.
      */
-    segmentLength: 4.5,
-    segmentCount: 46,
+    segmentLength: 3.5,
+    segmentCount: 60,
     startDistance: -16,
 
     roadWidth: 12,
