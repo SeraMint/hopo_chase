@@ -521,6 +521,22 @@ export class RoadController {
       this.config.segmentLength *
       1.12;
 
+    const treeInterval = this.graphicsQuality === "high"
+      ? 4
+      : this.graphicsQuality === "medium"
+        ? 6
+        : 8;
+    const rockInterval = this.graphicsQuality === "high"
+      ? 5
+      : this.graphicsQuality === "medium"
+        ? 7
+        : 10;
+    const distantSceneryStride = this.graphicsQuality === "high"
+      ? 1
+      : this.graphicsQuality === "medium"
+        ? 2
+        : 3;
+
     for (
       let index = 0;
       index <
@@ -657,7 +673,7 @@ export class RoadController {
         );
       }
 
-      if (index % 4 === 1) {
+      if (index % treeInterval === 1) {
         const side = index % 8 < 4 ? -1 : 1;
         const offset = this.config.roadWidth * 0.5 + 4.2 + (index % 3);
         const treeRoot = new TransformNode(`roadside-tree-${index}`, this.scene);
@@ -687,7 +703,7 @@ export class RoadController {
         }
       }
 
-      if (index % 5 === 2) {
+      if (index % rockInterval === 2) {
         const side = index % 10 < 5 ? 1 : -1;
         const rock = rockTemplate.createInstance(`roadside-rock-${index}`);
         rock.parent = root;
@@ -723,7 +739,13 @@ export class RoadController {
       // Recycled with each road segment so the horizon stays populated without
       // constructing and destroying scenery while the vehicle advances.
       for (const side of [-1, 1]) {
-        if ((index + (side > 0 ? 1 : 0)) % 3 === 0) {
+        const hasDistantScenery =
+          index % distantSceneryStride === 0;
+
+        if (
+          hasDistantScenery &&
+          (index + (side > 0 ? 1 : 0)) % 3 === 0
+        ) {
           const hill = distantHillTemplate.createInstance(
             `distant-hill-${index}-${side}`,
           );
@@ -738,21 +760,26 @@ export class RoadController {
           hill.isPickable = false;
         }
 
-        const pine = distantPineTemplate.createInstance(
-          `distant-pine-${index}-${side}`,
-        );
-        pine.parent = root;
-        pine.position.set(
-          side * (15.5 + (index % 5) * 2.8),
-          3.1,
-          (index % 3 - 1) * 2.1,
-        );
-        const pineScale = 0.72 + (index % 4) * 0.12;
-        pine.scaling.set(pineScale, pineScale, pineScale);
-        pine.rotation.y = index * 0.41 + side;
-        pine.isPickable = false;
+        if (hasDistantScenery) {
+          const pine = distantPineTemplate.createInstance(
+            `distant-pine-${index}-${side}`,
+          );
+          pine.parent = root;
+          pine.position.set(
+            side * (15.5 + (index % 5) * 2.8),
+            3.1,
+            (index % 3 - 1) * 2.1,
+          );
+          const pineScale = 0.72 + (index % 4) * 0.12;
+          pine.scaling.set(pineScale, pineScale, pineScale);
+          pine.rotation.y = index * 0.41 + side;
+          pine.isPickable = false;
+        }
 
-        if ((index + (side > 0 ? 2 : 0)) % 3 === 1) {
+        if (
+          hasDistantScenery &&
+          (index + (side > 0 ? 2 : 0)) % 3 === 1
+        ) {
           const scrub = scrubTemplate.createInstance(
             `roadside-scrub-${index}-${side}`,
           );

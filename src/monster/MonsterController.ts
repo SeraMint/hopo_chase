@@ -105,6 +105,8 @@ export class MonsterController {
   private hitFlashRemaining = 0;
   private hitFlashDuration = 0;
   private hitFlashColor = Color3.Black();
+  private hitFlashActive = false;
+  private readonly jumpOffset = Vector3.Zero();
 
   /**
    * 달리기 애니메이션이 계산한 실제 도약 높이입니다.
@@ -1195,9 +1197,11 @@ export class MonsterController {
      * 이번에는 투명 히트박스와 외형 전체를 도로의 up 방향으로
      * 들어 올려 발 네 개가 모두 지면에서 떨어지는 도약을 만듭니다.
      */
-    this.mesh.position.addInPlace(
-      roadSample.up.scale(this.currentRunJumpHeight),
+    roadSample.up.scaleToRef(
+      this.currentRunJumpHeight,
+      this.jumpOffset,
     );
+    this.mesh.position.addInPlace(this.jumpOffset);
 
     /**
      * 몬스터는 차량 뒤쪽에서 실제 주행 방향으로
@@ -1950,18 +1954,38 @@ export class MonsterController {
     this.hitFlashDuration = Math.max(0.001, duration / 1000);
     this.hitFlashRemaining = this.hitFlashDuration;
     this.hitFlashColor.copyFrom(color);
+    this.hitFlashActive = true;
   }
 
   private updateHitFlash(deltaTime: number): void {
+    if (!this.hitFlashActive) {
+      return;
+    }
+
     this.hitFlashRemaining = Math.max(0, this.hitFlashRemaining - deltaTime);
     const intensity = this.hitFlashDuration > 0
       ? smootherStep(this.hitFlashRemaining / this.hitFlashDuration)
       : 0;
 
-    this.reactiveMaterials.forEach((material, index) => {
-      const baseColor = this.reactiveBaseEmissiveColors[index] ?? Color3.Black();
-      material.emissiveColor = Color3.Lerp(baseColor, this.hitFlashColor, intensity);
-    });
+    for (let index = 0; index < this.reactiveMaterials.length; index += 1) {
+      const material = this.reactiveMaterials[index];
+      const baseColor = this.reactiveBaseEmissiveColors[index];
+
+      if (!baseColor) {
+        continue;
+      }
+
+      Color3.LerpToRef(
+        baseColor,
+        this.hitFlashColor,
+        intensity,
+        material.emissiveColor,
+      );
+    }
+
+    if (this.hitFlashRemaining <= 0) {
+      this.hitFlashActive = false;
+    }
   }
 
   public setDifficulty(settings: MonsterDifficultySettings): void {
@@ -1996,6 +2020,7 @@ export class MonsterController {
     this.hitReactionStrength = 0;
     this.hitFlashRemaining = 0;
     this.hitFlashDuration = 0;
+    this.hitFlashActive = true;
     this.updateHitFlash(0);
 
     this.currentDifficultyMultiplier =

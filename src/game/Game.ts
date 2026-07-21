@@ -412,17 +412,38 @@ export class Game {
     shadows.darkness = 0.3;
     shadows.frustumEdgeFalloff = 0.18;
 
-    shadows.addShadowCaster(this.monster.mesh, true);
+    const monsterShadowParts = [
+      "monster-rib-cage",
+      "monster-abdomen",
+      "monster-shoulder-mass",
+      "monster-cranium",
+      "monster-rear-cranium",
+      "monster-muzzle",
+    ];
+
+    for (const mesh of this.monster.mesh.getChildMeshes()) {
+      const isLimbPart =
+        mesh.name.endsWith("-upper") ||
+        mesh.name.endsWith("-lower") ||
+        mesh.name.endsWith("-foot");
+
+      if (
+        monsterShadowParts.includes(mesh.name) ||
+        isLimbPart
+      ) {
+        shadows.addShadowCaster(mesh);
+      }
+    }
 
     for (const mesh of this.road.getVehicleMeshes()) {
-      if (
-        mesh.name.includes("tail-light") ||
-        mesh.name.includes("rear-window")
-      ) {
-        continue;
-      }
+      const castsUsefulShadow =
+        mesh.name === "vehicle-body" ||
+        mesh.name === "vehicle-cabin" ||
+        mesh.name.startsWith("vehicle-wheel-");
 
-      shadows.addShadowCaster(mesh);
+      if (castsUsefulShadow) {
+        shadows.addShadowCaster(mesh);
+      }
     }
   }
 
