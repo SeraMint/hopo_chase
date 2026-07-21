@@ -184,6 +184,12 @@ export class GrenadeLauncherController {
   private readonly activeGrenades:
     ActiveGrenade[] = [];
 
+  private readonly activeGrenadePool:
+    ActiveGrenade[] = [];
+
+  private readonly explosionEventPool:
+    GrenadeExplosionEvent[] = [];
+
   private readonly grenadeMeshPool:
     Mesh[] = [];
 
@@ -481,13 +487,58 @@ export class GrenadeLauncherController {
     mesh.rotation.set(0, 0, 0);
     mesh.setEnabled(true);
 
+    const grenade =
+      this.activeGrenadePool.pop();
+
+    if (grenade) {
+      grenade.mesh = mesh;
+      grenade.origin.copyFrom(origin);
+      grenade.initialVelocity.copyFrom(velocity);
+      grenade.elapsedTime = 0;
+      this.activeGrenades.push(grenade);
+      return;
+    }
+
     this.activeGrenades.push({
       mesh,
       origin: origin.clone(),
-      initialVelocity:
-        velocity.clone(),
+      initialVelocity: velocity.clone(),
       elapsedTime: 0,
     });
+  }
+
+  private releaseActiveGrenade(grenade: ActiveGrenade): void {
+    this.releaseGrenadeMesh(grenade.mesh);
+
+    if (this.activeGrenadePool.length < 4) {
+      this.activeGrenadePool.push(grenade);
+    }
+  }
+
+  private acquireExplosionEvent(position: Vector3): GrenadeExplosionEvent {
+    const event = this.explosionEventPool.pop();
+
+    if (event) {
+      event.position.copyFrom(position);
+      return event;
+    }
+
+    return {
+      position: position.clone(),
+      radius: this.config.explosionRadius,
+      knockbackImpulse: this.config.explosionKnockbackImpulse,
+      lateralImpulse: this.config.explosionLateralImpulse,
+    };
+  }
+
+  private recycleExplosionEvents(events: GrenadeExplosionEvent[]): void {
+    for (const event of events) {
+      if (this.explosionEventPool.length < 4) {
+        this.explosionEventPool.push(event);
+      }
+    }
+
+    events.length = 0;
   }
 
   private createGrenadeMesh(): Mesh {
@@ -806,7 +857,7 @@ export class GrenadeLauncherController {
     const explosions =
       this.updateResult.explosions;
 
-    explosions.length = 0;
+    this.recycleExplosionEvents(explosions);
 
     for (
       let index =
@@ -850,38 +901,28 @@ export class GrenadeLauncherController {
         continue;
       }
 
-      const explosionPosition =
-        grenade.mesh.position.clone();
-
-      explosionPosition.y =
-        this.road.getGroundHeight(
-          explosionPosition,
+      const explosion =
+        this.acquireExplosionEvent(
+          grenade.mesh.position,
         );
 
-      this.releaseGrenadeMesh(
-        grenade.mesh,
-      );
+      explosion.position.y =
+        this.road.getGroundHeight(
+          explosion.position,
+        );
 
-      this.activeGrenades.splice(
-        index,
-        1,
-      );
+      const lastIndex =
+        this.activeGrenades.length - 1;
+      this.activeGrenades[index] =
+        this.activeGrenades[lastIndex];
+      this.activeGrenades.pop();
 
       this.createExplosionVisual(
-        explosionPosition,
+        explosion.position,
       );
 
-      explosions.push({
-        position: explosionPosition,
-        radius:
-          this.config.explosionRadius,
-        knockbackImpulse:
-          this.config
-            .explosionKnockbackImpulse,
-        lateralImpulse:
-          this.config
-            .explosionLateralImpulse,
-      });
+      explosions.push(explosion);
+      this.releaseActiveGrenade(grenade);
     }
 
     this.updateExplosionVisuals(
@@ -1336,12 +1377,13 @@ export class GrenadeLauncherController {
       const grenade
       of this.activeGrenades
     ) {
-      this.releaseGrenadeMesh(
-        grenade.mesh,
-      );
+      this.releaseActiveGrenade(grenade);
     }
 
     this.activeGrenades.length = 0;
+    this.recycleExplosionEvents(
+      this.updateResult.explosions,
+    );
 
     for (
       const visual
