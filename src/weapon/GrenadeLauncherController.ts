@@ -571,12 +571,11 @@ export class GrenadeLauncherController {
   }
 
   private updateLaunchOrigin(): void {
-    this.launchOrigin.copyFrom(
-      this.road.getLaunchOrigin(
-        this.config.launchOrigin.z,
-        this.config.launchOrigin.x,
-        this.config.launchOrigin.y,
-      ),
+    this.road.getLaunchOrigin(
+      this.config.launchOrigin.z,
+      this.config.launchOrigin.x,
+      this.config.launchOrigin.y,
+      this.launchOrigin,
     );
   }
 

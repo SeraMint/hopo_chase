@@ -153,6 +153,7 @@ export class RoadController {
   private readonly cameraTargetSample = createRoadSample();
   private readonly nearestSearchSample = createRoadSample();
   private readonly groundHeightSample = createRoadSample();
+  private readonly launchOriginSample = createRoadSample();
 
   private progress = 0;
 
@@ -1421,12 +1422,28 @@ export class RoadController {
     distanceAhead: number,
     lateralOffset: number,
     heightOffset: number,
+    result?: Vector3,
   ): Vector3 {
-    return this.sample(
+    if (!result) {
+      return this.sample(
+        distanceAhead,
+        lateralOffset,
+        heightOffset,
+      ).position;
+    }
+
+    this.sample(
       distanceAhead,
       lateralOffset,
       heightOffset,
-    ).position;
+      this.launchOriginSample,
+    );
+
+    result.copyFrom(
+      this.launchOriginSample.position,
+    );
+
+    return result;
   }
 
   public update(
