@@ -275,6 +275,9 @@ export class HudController {
   private reloadCompleteTimer:
     number | undefined;
 
+  private focusPlayerNameTimer:
+    number | undefined;
+
   private readonly textCache = new WeakMap<Node, string>();
   private readonly hiddenCache = new WeakMap<HTMLElement, boolean>();
   private readonly styleCache = new WeakMap<Element, Map<string, string>>();
@@ -1182,6 +1185,9 @@ export class HudController {
 
     this.reloadCompleteTimer =
       window.setTimeout(() => {
+        this.reloadCompleteTimer =
+          undefined;
+
         this.reloadCompleteFlash.hidden =
           true;
 
@@ -1360,10 +1366,23 @@ export class HudController {
   }
 
   public focusPlayerName(): void {
-    window.setTimeout(() => {
-      this.playerNameInput.focus();
-      this.playerNameInput.select();
-    }, 0);
+    if (
+      this.focusPlayerNameTimer !==
+      undefined
+    ) {
+      window.clearTimeout(
+        this.focusPlayerNameTimer,
+      );
+    }
+
+    this.focusPlayerNameTimer =
+      window.setTimeout(() => {
+        this.focusPlayerNameTimer =
+          undefined;
+
+        this.playerNameInput.focus();
+        this.playerNameInput.select();
+      }, 0);
   }
 
   public getPlayerName(): string {
@@ -1494,6 +1513,8 @@ export class HudController {
 
     this.statusTimer =
       window.setTimeout(() => {
+        this.statusTimer = undefined;
+
         this.statusElement.textContent =
           fallbackProvider();
       }, duration);
@@ -1511,5 +1532,45 @@ export class HudController {
     );
 
     this.statusTimer = undefined;
+  }
+
+  public clearTransientEffects(): void {
+    this.clearStatusTimer();
+
+    if (
+      this.reloadCompleteTimer !==
+      undefined
+    ) {
+      window.clearTimeout(
+        this.reloadCompleteTimer,
+      );
+
+      this.reloadCompleteTimer =
+        undefined;
+    }
+
+    if (
+      this.focusPlayerNameTimer !==
+      undefined
+    ) {
+      window.clearTimeout(
+        this.focusPlayerNameTimer,
+      );
+
+      this.focusPlayerNameTimer =
+        undefined;
+    }
+
+    this.reloadCompleteFlash.hidden =
+      true;
+
+    this.reloadCompleteFlash.classList
+      .remove(
+        "reload-complete-flash--active",
+      );
+
+    this.ammoRack.classList.remove(
+      "ammo-rack--complete",
+    );
   }
 }

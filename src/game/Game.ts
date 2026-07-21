@@ -1275,7 +1275,7 @@ export class Game {
     this.state = "gameOver";
     this.grenade.cancelAim();
     this.releaseGrenadePointerCapture();
-    this.hud.clearStatusTimer();
+    this.hud.clearTransientEffects();
     this.hud.setStatus(
       "괴물이 차량을 따라잡았습니다.",
     );
@@ -1355,7 +1355,7 @@ export class Game {
     this.grenade.reset();
     this.score.reset();
 
-    this.hud.clearStatusTimer();
+    this.hud.clearTransientEffects();
     this.hud.resetScoreRegistration();
     this.hud.setGameOverVisible(false);
     this.hud.setTitleVisible(true);
@@ -1402,7 +1402,7 @@ export class Game {
     this.grenade.reset();
     this.score.reset();
 
-    this.hud.clearStatusTimer();
+    this.hud.clearTransientEffects();
     this.hud.resetScoreRegistration();
     this.hud.setTitleVisible(false);
     this.hud.setGameOverVisible(false);
