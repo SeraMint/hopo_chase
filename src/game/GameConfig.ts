@@ -123,7 +123,7 @@ export const GAME_CONFIG = {
     minApproachSpeed: 7,
     maxApproachSpeed: 16,
 
-    speedIncreasePerSecond: 0.005,
+    speedIncreasePerSecond: 0.015,
 
     swayAmount: 2.8,
     minSwaySpeed: 2.4,

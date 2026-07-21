@@ -62,6 +62,9 @@ function randomRange(minimum: number, maximum: number): number {
   return minimum + Math.random() * (maximum - minimum);
 }
 
+const RANDOM_SPEED_MINIMUM_MULTIPLIER = 0.94;
+const RANDOM_SPEED_MAXIMUM_MULTIPLIER = 1.08;
+
 /**
  * 시작과 끝에서 속도가 자연스럽게 줄어드는 보간입니다.
  */
@@ -1051,7 +1054,10 @@ export class MonsterController {
     }
 
     this.randomSpeedStartMultiplier = this.randomSpeedMultiplier;
-    this.randomSpeedTargetMultiplier = randomRange(0.82, 1.28);
+    this.randomSpeedTargetMultiplier = randomRange(
+      RANDOM_SPEED_MINIMUM_MULTIPLIER,
+      RANDOM_SPEED_MAXIMUM_MULTIPLIER,
+    );
     this.randomSpeedElapsed = 0;
     this.randomSpeedDuration = randomRange(0.55, 1.65);
   }
@@ -2077,7 +2083,10 @@ export class MonsterController {
     this.currentRunSpeed = 0;
     this.randomSpeedMultiplier = 1;
     this.randomSpeedStartMultiplier = 1;
-    this.randomSpeedTargetMultiplier = randomRange(0.82, 1.28);
+    this.randomSpeedTargetMultiplier = randomRange(
+      RANDOM_SPEED_MINIMUM_MULTIPLIER,
+      RANDOM_SPEED_MAXIMUM_MULTIPLIER,
+    );
     this.randomSpeedElapsed = 0;
     this.randomSpeedDuration = randomRange(0.55, 1.65);
     this.attackElapsed = 0;
