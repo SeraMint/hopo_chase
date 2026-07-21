@@ -15,7 +15,7 @@ import {
   Vector3,
 } from "@babylonjs/core";
 
-import { RoadController } from "../world/RoadController";
+import { RoadController, type RoadSample } from "../world/RoadController";
 
 export type GrenadeAimResult =
   | "started"
@@ -168,6 +168,16 @@ export class GrenadeLauncherController {
 
   private aimVelocity = Vector3.Zero();
   private landingPosition = Vector3.Zero();
+  private readonly landingRoadSample: RoadSample = {
+    position: Vector3.Zero(),
+    tangent: Vector3.Zero(),
+    right: Vector3.Zero(),
+    up: Vector3.Zero(),
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+    distanceAhead: 0,
+  };
   private estimatedLandingDistanceValue = 0;
 
   private readonly activeGrenades:
@@ -625,6 +635,7 @@ export class GrenadeLauncherController {
     const landingRoadSample =
       this.road.getNearestSample(
         this.landingPosition,
+        this.landingRoadSample,
       );
 
     this.landingMarker.rotation.set(
