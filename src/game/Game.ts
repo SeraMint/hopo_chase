@@ -43,6 +43,12 @@ type GameState =
 
 type GraphicsQuality = "low" | "medium" | "high";
 
+// Skip the MP3 lead-in and use only the source recording's first report.
+const RIFLE_SINGLE_SHOT_START_SECONDS = 0.08;
+const RIFLE_SINGLE_SHOT_DURATION_MS = 180;
+const RIFLE_RELOAD_PLAYBACK_RATE = 1.5;
+const RIFLE_RELOAD_GAIN = 2;
+
 interface BulletVisualPoolItem {
   tracer: LinesMesh;
   points: [Vector3, Vector3];
@@ -58,7 +64,9 @@ export class Game {
   } as const;
 
   private readonly backgroundMusic = new Audio(backgroundMusicUrl);
+  private readonly soundAudioContext = new AudioContext();
   private readonly soundPools = new Map<string, HTMLAudioElement[]>();
+  private readonly soundPlaybackIds = new WeakMap<HTMLAudioElement, number>();
   private soundEnabled = false;
 
   private readonly canvas: HTMLCanvasElement;
@@ -257,6 +265,14 @@ export class Game {
   private createSoundChannel(url: string): HTMLAudioElement {
     const audio = new Audio(url);
     audio.preload = "auto";
+
+    const source = this.soundAudioContext.createMediaElementSource(audio);
+    const gain = this.soundAudioContext.createGain();
+    gain.gain.value = url === this.soundUrls.rifleReload
+      ? RIFLE_RELOAD_GAIN
+      : 1;
+    source.connect(gain).connect(this.soundAudioContext.destination);
+
     audio.load();
     return audio;
   }
@@ -293,8 +309,30 @@ export class Game {
       return;
     }
 
-    audio.currentTime = 0;
-    void audio.play().catch(() => {
+    const playbackId = (this.soundPlaybackIds.get(audio) ?? 0) + 1;
+    this.soundPlaybackIds.set(audio, playbackId);
+    audio.playbackRate = url === this.soundUrls.rifleReload
+      ? RIFLE_RELOAD_PLAYBACK_RATE
+      : 1;
+    audio.currentTime = url === this.soundUrls.rifleFire
+      ? RIFLE_SINGLE_SHOT_START_SECONDS
+      : 0;
+
+    void this.soundAudioContext.resume();
+    void audio.play().then(() => {
+      if (url !== this.soundUrls.rifleFire) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        if (this.soundPlaybackIds.get(audio) !== playbackId) {
+          return;
+        }
+
+        audio.pause();
+        audio.currentTime = RIFLE_SINGLE_SHOT_START_SECONDS;
+      }, RIFLE_SINGLE_SHOT_DURATION_MS);
+    }).catch(() => {
       // 브라우저가 사용자 입력 전 자동 재생을 차단하면 재생을 건너뜁니다.
     });
   }
