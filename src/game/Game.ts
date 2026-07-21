@@ -1,0 +1,1134 @@
+import {
+  Color3,
+  Color4,
+  Engine,
+  HemisphericLight,
+  Matrix,
+  MeshBuilder,
+  Scene,
+  StandardMaterial,
+  UniversalCamera,
+  Vector3,
+  type Mesh,
+} from "@babylonjs/core";
+
+import {
+  GAME_CONFIG,
+  type DifficultyId,
+} from "./GameConfig";
+import { MonsterController } from "../monster/MonsterController";
+import { GunController } from "../weapon/GunController";
+import { GrenadeLauncherController } from "../weapon/GrenadeLauncherController";
+import { RoadController } from "../world/RoadController";
+import { HudController } from "../ui/HudController";
+import {
+  LocalStorageLeaderboardRepository,
+  SupabaseLeaderboardRepository,
+} from "../score/LeaderboardRepository";
+import { ScoreController } from "../score/ScoreController";
+import rifleFireSoundUrl from "../assets/sounds/m4_fire.mp3?url";
+import rifleReloadSoundUrl from "../assets/sounds/m4_reload.mp3?url";
+import grenadeFireSoundUrl from "../assets/sounds/grenade_fire.mp3?url";
+import grenadeExplosionSoundUrl from "../assets/sounds/grenade_explode.mp3?url";
+import backgroundMusicUrl from "../assets/sounds/Before_the_Breach.mp3?url";
+
+type GameState =
+  | "title"
+  | "playing"
+  | "gameOver";
+
+export class Game {
+  private readonly soundUrls = {
+    rifleFire: rifleFireSoundUrl,
+    rifleReload: rifleReloadSoundUrl,
+    grenadeFire: grenadeFireSoundUrl,
+    grenadeExplosion: grenadeExplosionSoundUrl,
+  } as const;
+
+  private readonly backgroundMusic = new Audio(backgroundMusicUrl);
+  private readonly activeSounds = new Set<HTMLAudioElement>();
+  private soundEnabled = true;
+
+  private readonly canvas: HTMLCanvasElement;
+  private readonly engine: Engine;
+  private readonly scene: Scene;
+  private readonly camera: UniversalCamera;
+
+  private readonly road: RoadController;
+  private readonly monster: MonsterController;
+  private readonly gun: GunController;
+  private readonly grenade: GrenadeLauncherController;
+  private readonly score: ScoreController;
+  private readonly hud: HudController;
+
+  private state: GameState = "title";
+
+  private selectedDifficulty:
+    DifficultyId =
+      GAME_CONFIG.defaultDifficulty;
+
+  private grenadePointerId:
+    number | null = null;
+
+  private elapsedTime = 0;
+  private hitCount = 0;
+  private nextGrenadeRewardAt =
+    GAME_CONFIG.grenade.rewardEveryHits;
+
+  private pointerInsideCanvas = true;
+  private scoreSubmitted = false;
+  private scoreSubmitting = false;
+
+  public constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+
+    this.engine = new Engine(canvas, true, {
+      preserveDrawingBuffer: false,
+      stencil: true,
+    });
+
+    this.scene = new Scene(this.engine);
+    this.scene.clearColor = new Color4(
+      0.53,
+      0.78,
+      0.96,
+      1,
+    );
+
+    this.camera = this.createCamera();
+    this.createLighting();
+
+    this.road = new RoadController(
+      this.scene,
+      GAME_CONFIG.road,
+    );
+
+    this.road.updateCamera(
+      this.camera,
+      0,
+      true,
+    );
+
+    this.monster = new MonsterController(
+      this.scene,
+      GAME_CONFIG.monster,
+      this.road,
+    );
+
+    this.applySelectedDifficulty();
+
+    this.gun = new GunController(
+      GAME_CONFIG.gun,
+    );
+
+    this.grenade =
+      new GrenadeLauncherController(
+        this.scene,
+        this.camera,
+        GAME_CONFIG.grenade,
+        this.road,
+      );
+
+    const localLeaderboardRepository =
+      new LocalStorageLeaderboardRepository(
+        GAME_CONFIG.scoring.storageKey,
+        GAME_CONFIG.scoring.leaderboardSize,
+      );
+
+    const leaderboardRepository =
+      new SupabaseLeaderboardRepository(
+        localLeaderboardRepository,
+        GAME_CONFIG.scoring.leaderboardSize,
+      );
+
+    this.score = new ScoreController(
+      GAME_CONFIG.scoring,
+      leaderboardRepository,
+    );
+
+    this.hud = new HudController();
+
+    this.registerInputEvents();
+    this.registerWindowEvents();
+    this.registerUiEvents();
+
+    void this.refreshLeaderboard();
+
+    this.hud.setGameOverVisible(false);
+    this.hud.setTitleVisible(true);
+    this.updateHud();
+
+    this.backgroundMusic.loop = true;
+    this.backgroundMusic.preload = "auto";
+    this.backgroundMusic.volume = 0.45;
+    this.preloadSounds();
+  }
+
+  private preloadSounds(): void {
+    for (const url of Object.values(this.soundUrls)) {
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      audio.load();
+    }
+  }
+
+  private playSound(url: string): void {
+    if (!this.soundEnabled) {
+      return;
+    }
+
+    const audio = new Audio(url);
+    audio.preload = "auto";
+    this.activeSounds.add(audio);
+    audio.addEventListener(
+      "ended",
+      () => this.activeSounds.delete(audio),
+      { once: true },
+    );
+    void audio.play().catch(() => {
+      this.activeSounds.delete(audio);
+      // 브라우저가 사용자 입력 전 자동 재생을 차단하면 재생을 건너뜁니다.
+    });
+  }
+
+  private startBackgroundMusic(): void {
+    if (!this.soundEnabled || !this.backgroundMusic.paused) {
+      return;
+    }
+
+    void this.backgroundMusic.play().catch(() => {
+      // 첫 사용자 입력 전에는 브라우저가 자동 재생을 차단할 수 있습니다.
+    });
+  }
+
+  private toggleSound(): void {
+    this.soundEnabled = !this.soundEnabled;
+
+    if (this.soundEnabled) {
+      this.startBackgroundMusic();
+    } else {
+      this.backgroundMusic.pause();
+      for (const audio of this.activeSounds) {
+        audio.pause();
+      }
+      this.activeSounds.clear();
+    }
+
+    this.hud.soundToggleButton.setAttribute(
+      "aria-pressed",
+      String(this.soundEnabled),
+    );
+    this.hud.soundToggleButton.setAttribute(
+      "aria-label",
+      this.soundEnabled ? "게임 소리 끄기" : "게임 소리 켜기",
+    );
+    this.hud.soundToggleButton.textContent =
+      this.soundEnabled ? "🔊 소리 켜짐" : "🔇 소리 꺼짐";
+  }
+
+  private createCamera(): UniversalCamera {
+    const config = GAME_CONFIG.camera;
+
+    const camera = new UniversalCamera(
+      "rear-camera",
+      new Vector3(
+        config.position.x,
+        config.position.y,
+        config.position.z,
+      ),
+      this.scene,
+    );
+
+    camera.setTarget(
+      new Vector3(
+        config.target.x,
+        config.target.y,
+        config.target.z,
+      ),
+    );
+
+    camera.fov = config.fov;
+    camera.minZ = config.minZ;
+    camera.inputs.clear();
+
+    this.scene.activeCamera = camera;
+
+    return camera;
+  }
+
+  private createLighting(): void {
+    const light = new HemisphericLight(
+      "hemispheric-light",
+      new Vector3(0, 1, -0.25),
+      this.scene,
+    );
+
+    light.intensity = 1.45;
+    light.groundColor = new Color3(
+      0.42,
+      0.52,
+      0.38,
+    );
+  }
+
+  private registerUiEvents(): void {
+    this.hud.startButton.addEventListener(
+      "click",
+      () => this.startRun(),
+    );
+
+    this.hud.soundToggleButton.addEventListener(
+      "click",
+      () => this.toggleSound(),
+    );
+
+    this.hud.restartButton.addEventListener(
+      "click",
+      () => this.returnToTitle(),
+    );
+
+    this.hud.submitScoreButton.addEventListener(
+      "click",
+      () => this.submitScore(),
+    );
+
+    this.hud.playerNameInput.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Enter") {
+          this.submitScore();
+        }
+      },
+    );
+  }
+
+  private registerInputEvents(): void {
+    this.canvas.addEventListener(
+      "pointerdown",
+      (event) => this.handlePointerDown(event),
+    );
+
+    this.canvas.addEventListener(
+      "pointermove",
+      (event) => {
+        this.hud.moveCrosshair(
+          event.clientX,
+          event.clientY,
+        );
+
+        const rect =
+          this.canvas.getBoundingClientRect();
+
+        const normalizedY =
+          rect.height > 0
+            ? (event.clientY - rect.top) /
+              rect.height
+            : 0.5;
+
+        this.grenade.setAimPointer(
+          this.scene.pointerX,
+          this.scene.pointerY,
+          normalizedY,
+        );
+
+        if (this.state === "playing") {
+          this.hud.setCrosshairVisible(true);
+        }
+      },
+    );
+
+    this.canvas.addEventListener(
+      "pointerenter",
+      () => {
+        this.pointerInsideCanvas = true;
+
+        if (this.state === "playing") {
+          this.hud.setCrosshairVisible(true);
+        }
+      },
+    );
+
+    this.canvas.addEventListener(
+      "pointerleave",
+      () => {
+        this.pointerInsideCanvas = false;
+        this.hud.setCrosshairVisible(false);
+      },
+    );
+
+    this.canvas.addEventListener(
+      "contextmenu",
+      (event) => event.preventDefault(),
+    );
+
+    this.canvas.addEventListener(
+      "auxclick",
+      (event) => {
+        if (event.button === 1) {
+          event.preventDefault();
+        }
+      },
+    );
+
+    window.addEventListener(
+      "pointerup",
+      (event) => {
+        if (event.button === 1) {
+          this.handleGrenadeRelease(
+            event,
+          );
+        }
+      },
+    );
+  }
+
+  private registerWindowEvents(): void {
+    window.addEventListener(
+      "resize",
+      () => this.engine.resize(),
+    );
+
+    window.addEventListener(
+      "blur",
+      () => {
+        if (this.grenade.isAiming) {
+          this.grenade.cancelAim();
+          this.releaseGrenadePointerCapture();
+          this.updateHud();
+        }
+      },
+    );
+  }
+
+  private handlePointerDown(
+    event: PointerEvent,
+  ): void {
+    if (this.state !== "playing") {
+      return;
+    }
+
+    if (event.button === 1) {
+      event.preventDefault();
+      this.handleGrenadeAimStart(event);
+      return;
+    }
+
+    if (event.button === 2) {
+      event.preventDefault();
+      this.handleReload();
+      return;
+    }
+
+    if (event.button === 0) {
+      this.handleFire();
+    }
+  }
+
+  private handleGrenadeAimStart(
+    event: PointerEvent,
+  ): void {
+    if (this.gun.isReloading) {
+      this.showTemporaryStatus(
+        "재장전 중에는 유탄을 사용할 수 없습니다.",
+      );
+      return;
+    }
+
+    const rect =
+      this.canvas.getBoundingClientRect();
+
+    const normalizedY =
+      rect.height > 0
+        ? (event.clientY - rect.top) /
+          rect.height
+        : 0.5;
+
+    const result = this.grenade.beginAim(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      normalizedY,
+    );
+
+    if (result === "empty") {
+      this.showTemporaryStatus(
+        "유탄이 없습니다. 몬스터를 10회 타격하면 1발을 획득합니다.",
+      );
+      return;
+    }
+
+    if (result === "cooldown") {
+      this.showTemporaryStatus(
+        `유탄 재사용까지 ${this.grenade.cooldownRemaining.toFixed(1)}초`,
+      );
+      return;
+    }
+
+    if (result === "started") {
+      this.grenadePointerId =
+        event.pointerId;
+
+      try {
+        this.canvas.setPointerCapture(
+          event.pointerId,
+        );
+      } catch {
+        this.grenadePointerId = null;
+      }
+
+      this.hud.setStatus(
+        "유탄 조준 중: 위로 이동하면 멀리, 아래로 이동하면 가까워집니다.",
+      );
+    }
+
+    this.updateHud();
+  }
+
+  private handleGrenadeRelease(
+    event?: PointerEvent,
+  ): void {
+    if (
+      this.state !== "playing" ||
+      !this.grenade.isAiming
+    ) {
+      return;
+    }
+
+    const result = this.grenade.releaseFire();
+
+    this.releaseGrenadePointerCapture(
+      event?.pointerId,
+    );
+
+    if (result === "fired") {
+      this.playSound(this.soundUrls.grenadeFire);
+      this.showTemporaryStatus(
+        "유탄 발사! 낙하지점을 확인하세요.",
+      );
+    } else if (result === "empty") {
+      this.showTemporaryStatus(
+        "유탄이 없습니다.",
+      );
+    }
+
+    this.updateHud();
+  }
+
+  private releaseGrenadePointerCapture(
+    pointerId = this.grenadePointerId,
+  ): void {
+    if (pointerId === null) {
+      return;
+    }
+
+    try {
+      if (
+        this.canvas.hasPointerCapture(
+          pointerId,
+        )
+      ) {
+        this.canvas.releasePointerCapture(
+          pointerId,
+        );
+      }
+    } catch {
+      // 브라우저가 이미 캡처를 해제한 경우 무시합니다.
+    }
+
+    if (
+      this.grenadePointerId ===
+      pointerId
+    ) {
+      this.grenadePointerId = null;
+    }
+  }
+
+  private handleFire(): void {
+    if (this.grenade.isAiming) {
+      this.showTemporaryStatus(
+        "유탄 조준 중에는 소총을 발사할 수 없습니다.",
+      );
+      return;
+    }
+
+    const fireResult = this.gun.tryFire();
+
+    switch (fireResult) {
+      case "reloading":
+        this.showTemporaryStatus(
+          "재장전 중에는 사격할 수 없습니다.",
+        );
+        return;
+
+      case "cooldown":
+        this.showTemporaryStatus(
+          "아직 다음 탄환을 발사할 수 없습니다.",
+        );
+        return;
+
+      case "empty":
+        this.hud.setStatus(
+          "탄약이 없습니다. 우클릭으로 재장전하세요.",
+        );
+        this.updateHud();
+        return;
+
+      case "fired":
+        break;
+    }
+
+    this.playSound(this.soundUrls.rifleFire);
+
+    const pickResult = this.scene.pick(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      (mesh) => mesh === this.monster.mesh,
+    );
+
+    this.spawnBulletVisual(
+      pickResult?.pickedPoint ?? null,
+    );
+
+    if (
+      pickResult?.hit &&
+      pickResult.pickedMesh ===
+        this.monster.mesh
+    ) {
+      if (pickResult.pickedPoint) {
+        this.spawnBloodEffect(
+          pickResult.pickedPoint,
+          pickResult.pickedPoint
+            .subtract(this.camera.globalPosition)
+            .normalize(),
+        );
+      }
+
+      this.monster.applyBulletHit();
+      this.registerMonsterHit(
+        "명중! 몬스터가 뒤로 밀려납니다.",
+      );
+    } else {
+      this.showTemporaryStatus("빗나갔습니다.");
+    }
+
+    if (this.gun.needsReload) {
+      this.hud.setStatus(
+        "탄약이 없습니다. 우클릭으로 재장전하세요.",
+      );
+    }
+
+    this.updateHud();
+  }
+
+  private spawnBulletVisual(
+    hitPoint: Vector3 | null,
+  ): void {
+    const ray = this.scene.createPickingRay(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      Matrix.Identity(),
+      this.camera,
+    );
+
+    const origin = ray.origin.add(ray.direction.scale(0.8));
+    const target =
+      hitPoint ?? ray.origin.add(ray.direction.scale(120));
+
+    const tracer = MeshBuilder.CreateLines(
+      "bullet-tracer",
+      {
+        points: [
+          origin,
+          Vector3.Lerp(origin, target, 0.92),
+        ],
+      },
+      this.scene,
+    );
+
+    tracer.color = new Color3(1, 0.72, 0.18);
+    tracer.alpha = 0.95;
+    tracer.isPickable = false;
+
+    let elapsed = 0;
+    const lifetime = 0.09;
+
+    const observer = this.scene.onBeforeRenderObservable.add(() => {
+      elapsed += Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+
+      const progress = Math.min(elapsed / lifetime, 1);
+
+      tracer.alpha = 1 - progress;
+
+      if (progress < 1) {
+        return;
+      }
+
+      this.scene.onBeforeRenderObservable.remove(observer);
+      tracer.dispose();
+    });
+  }
+
+  private spawnBloodEffect(
+    position: Vector3,
+    shotDirection: Vector3,
+  ): void {
+    const bloodMaterial = new StandardMaterial(
+      "monster-blood-material",
+      this.scene,
+    );
+
+    bloodMaterial.diffuseColor = new Color3(0.13, 0.003, 0.002);
+    bloodMaterial.emissiveColor = Color3.Black();
+    bloodMaterial.specularColor = Color3.Black();
+
+    const droplets: {
+      mesh: Mesh;
+      velocity: Vector3;
+    }[] = [];
+
+    for (let index = 0; index < 5; index += 1) {
+      const droplet = MeshBuilder.CreateSphere(
+        `monster-blood-drop-${index}`,
+        {
+          diameter: 0.022 + (index % 3) * 0.006,
+          segments: 4,
+        },
+        this.scene,
+      );
+
+      droplet.position.copyFrom(position);
+      droplet.scaling.set(0.72, 1.45, 0.72);
+      droplet.material = bloodMaterial;
+      droplet.isPickable = false;
+
+      const velocity = shotDirection
+        .scale(0.18)
+        .add(
+          new Vector3(
+            (Math.random() - 0.5) * 0.9,
+            0.18 + Math.random() * 0.75,
+            (Math.random() - 0.5) * 0.9,
+          ),
+        )
+        .scale(0.8 + Math.random() * 0.65);
+
+      droplets.push({
+        mesh: droplet,
+        velocity,
+      });
+    }
+
+    let elapsed = 0;
+    const lifetime = 0.2;
+
+    const observer = this.scene.onBeforeRenderObservable.add(() => {
+      const deltaTime = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+
+      elapsed += deltaTime;
+
+      droplets.forEach((droplet) => {
+        droplet.velocity.y -= 4.4 * deltaTime;
+        droplet.mesh.position.addInPlace(
+          droplet.velocity.scale(deltaTime),
+        );
+        droplet.mesh.visibility = Math.max(0, 1 - elapsed / lifetime);
+      });
+
+      if (elapsed < lifetime) {
+        return;
+      }
+
+      this.scene.onBeforeRenderObservable.remove(observer);
+      droplets.forEach((droplet) => droplet.mesh.dispose());
+      bloodMaterial.dispose();
+    });
+  }
+
+  private registerMonsterHit(
+    hitMessage: string,
+  ): void {
+    this.hitCount += 1;
+
+    let awardedGrenades = 0;
+
+    while (
+      this.hitCount >=
+      this.nextGrenadeRewardAt
+    ) {
+      awardedGrenades +=
+        GAME_CONFIG.grenade.rewardAmount;
+
+      this.nextGrenadeRewardAt +=
+        GAME_CONFIG.grenade.rewardEveryHits;
+    }
+
+    if (awardedGrenades > 0) {
+      this.grenade.addAmmo(
+        awardedGrenades,
+      );
+
+      this.showTemporaryStatus(
+        `${hitMessage} 타격 보상으로 유탄 +${awardedGrenades}발!`,
+      );
+
+      return;
+    }
+
+    this.showTemporaryStatus(hitMessage);
+  }
+
+  private handleReload(): void {
+    if (this.grenade.isAiming) {
+      this.showTemporaryStatus(
+        "유탄 조준을 먼저 해제하세요.",
+      );
+      return;
+    }
+
+    const reloadResult =
+      this.gun.startReload();
+
+    if (reloadResult === "started") {
+      this.playSound(this.soundUrls.rifleReload);
+    }
+
+    switch (reloadResult) {
+      case "alreadyReloading":
+        this.showTemporaryStatus(
+          "이미 재장전 중입니다.",
+        );
+        break;
+
+      case "full":
+        this.showTemporaryStatus(
+          "탄창이 이미 가득 찼습니다.",
+        );
+        break;
+
+      case "started":
+        this.hud.setStatus("재장전 중입니다.");
+        break;
+    }
+
+    this.updateHud();
+  }
+
+  private async submitScore(): Promise<void> {
+    if (
+      this.state !== "gameOver" ||
+      this.scoreSubmitted ||
+      this.scoreSubmitting
+    ) {
+      return;
+    }
+
+    this.scoreSubmitting = true;
+    this.hud.markScoreSubmitting();
+
+    try {
+      const entry = await this.score.registerScore(
+        this.hud.getPlayerName(),
+        this.selectedDifficulty,
+      );
+
+      this.scoreSubmitted = true;
+
+      this.hud.markScoreSubmitted(
+      `${entry.playerName} 기록이 등록되었습니다.`,
+    );
+
+      await this.refreshLeaderboard();
+    } catch (error) {
+      console.error("Failed to submit leaderboard score", error);
+      this.hud.markScoreSubmissionFailed(
+        "등록에 실패했습니다. 네트워크 연결을 확인한 뒤 다시 시도하세요.",
+      );
+    } finally {
+      this.scoreSubmitting = false;
+    }
+  }
+
+  private async refreshLeaderboard(): Promise<void> {
+    const entries = await this.score.getLeaderboard();
+    this.hud.renderLeaderboard(entries);
+  }
+
+  private showTemporaryStatus(
+    message: string,
+  ): void {
+    this.hud.showTemporaryStatus(
+      message,
+      () => this.getDefaultStatus(),
+    );
+  }
+
+  private getDefaultStatus(): string {
+    if (this.state === "title") {
+      return "게임 시작 버튼을 눌러주세요.";
+    }
+
+    if (this.state === "gameOver") {
+      return "괴물이 차량을 따라잡았습니다.";
+    }
+
+    if (this.grenade.isAiming) {
+      return "유탄 조준 중: 위로 이동하면 멀리, 아래로 이동하면 가까워집니다.";
+    }
+
+    if (this.gun.isReloading) {
+      return "재장전 중입니다.";
+    }
+
+    if (this.gun.needsReload) {
+      return "탄약이 없습니다. 우클릭으로 재장전하세요.";
+    }
+
+    return "괴물이 접근 중입니다.";
+  }
+
+  private update(deltaTime: number): void {
+    if (this.state !== "playing") {
+      return;
+    }
+
+    this.elapsedTime += deltaTime;
+    this.score.update(deltaTime);
+
+    const gunUpdate = this.gun.update(deltaTime);
+
+    if (gunUpdate.reloadCompleted) {
+      this.hud.showReloadComplete();
+      this.showTemporaryStatus("재장전 완료.");
+    }
+
+    this.road.update(deltaTime);
+
+    this.road.updateCamera(
+      this.camera,
+      deltaTime,
+    );
+
+    this.monster.update(
+      deltaTime,
+      this.elapsedTime,
+    );
+
+    const grenadeUpdate =
+      this.grenade.update(deltaTime);
+
+    for (
+      const explosion
+      of grenadeUpdate.explosions
+    ) {
+      this.playSound(this.soundUrls.grenadeExplosion);
+
+      const hit =
+        this.monster.applyGrenadeExplosion(
+          explosion.position,
+          explosion.radius,
+          explosion.knockbackImpulse,
+          explosion.lateralImpulse,
+        );
+
+      if (hit) {
+        this.registerMonsterHit(
+          "유탄 명중! 폭발 충격으로 몬스터가 밀려났습니다.",
+        );
+      } else {
+        this.showTemporaryStatus(
+          "유탄이 빗나갔습니다.",
+        );
+      }
+    }
+
+    if (this.monster.hasCaughtVehicle) {
+      this.endGame();
+      return;
+    }
+
+    this.updateHud();
+  }
+
+  private updateHud(): void {
+    this.hud.update({
+      hitCount: this.hitCount,
+      monsterDistance: this.monster.distance,
+      currentAmmo: this.gun.currentAmmo,
+      magazineSize: this.gun.magazineSize,
+      shotCooldownRemaining:
+        this.gun.shotCooldownRemaining,
+      isReloading: this.gun.isReloading,
+      reloadRemaining: this.gun.reloadRemaining,
+      reloadDuration: this.gun.reloadDuration,
+      needsReload: this.gun.needsReload,
+      grenadeAmmo: this.grenade.currentAmmo,
+      grenadeCooldownRemaining:
+        this.grenade.cooldownRemaining,
+      grenadeCooldownDuration:
+        this.grenade.cooldownDuration,
+      isGrenadeAiming:
+        this.grenade.isAiming,
+      grenadeReady: this.grenade.isReady,
+      grenadeAimRangeFactor:
+        this.grenade.aimRangeFactor,
+      grenadeEstimatedDistance:
+        this.grenade
+          .estimatedLandingDistance,
+      difficultyLabel:
+        this.currentDifficulty.label,
+      distanceTravelled: this.score.distance,
+      survivalTime: this.score.time,
+      rank: this.score.currentRank,
+      monsterSpeedMultiplier:
+        this.monster.speedMultiplier,
+      isPlaying: this.state === "playing",
+    });
+  }
+
+  private endGame(): void {
+    if (this.state === "gameOver") {
+      return;
+    }
+
+    this.state = "gameOver";
+    this.grenade.cancelAim();
+    this.releaseGrenadePointerCapture();
+    this.hud.clearStatusTimer();
+    this.hud.setStatus(
+      "괴물이 차량을 따라잡았습니다.",
+    );
+
+    this.hud.setFinalScore({
+      distanceTravelled: this.score.distance,
+      survivalTime: this.score.time,
+      rank: this.score.currentRank,
+      difficultyLabel:
+        this.currentDifficulty.label,
+    });
+
+    void this.refreshLeaderboard();
+
+    this.hud.resetScoreRegistration();
+    this.hud.setGameOverVisible(true);
+    this.hud.setCrosshairVisible(false);
+    this.hud.focusPlayerName();
+    this.updateHud();
+  }
+
+  private get currentDifficulty() {
+    return GAME_CONFIG.difficulties[
+      this.selectedDifficulty
+    ];
+  }
+
+  private applySelectedDifficulty():
+    void {
+    const difficulty =
+      this.currentDifficulty;
+
+    this.monster.setDifficulty({
+      approachSpeedMultiplier:
+        difficulty
+          .approachSpeedMultiplier,
+
+      speedIncreaseMultiplier:
+        difficulty
+          .speedIncreaseMultiplier,
+
+      maximumTimeSpeedMultiplier:
+        difficulty
+          .maximumTimeSpeedMultiplier,
+    });
+  }
+
+  private returnToTitle(): void {
+    this.state = "title";
+
+    this.grenade.cancelAim();
+    this.releaseGrenadePointerCapture();
+
+    this.elapsedTime = 0;
+    this.hitCount = 0;
+    this.nextGrenadeRewardAt =
+      GAME_CONFIG.grenade.rewardEveryHits;
+    this.scoreSubmitted = false;
+    this.scoreSubmitting = false;
+
+    this.road.reset();
+
+    this.road.updateCamera(
+      this.camera,
+      0,
+      true,
+    );
+
+    this.monster.reset();
+    this.gun.reset();
+    this.grenade.reset();
+    this.score.reset();
+
+    this.hud.clearStatusTimer();
+    this.hud.resetScoreRegistration();
+    this.hud.setGameOverVisible(false);
+    this.hud.setTitleVisible(true);
+    this.hud.setCrosshairVisible(false);
+    this.hud.setStatus(
+      "게임 시작 버튼을 눌러주세요.",
+    );
+
+    this.updateHud();
+  }
+
+  private startRun(): void {
+    this.startBackgroundMusic();
+
+    this.selectedDifficulty =
+      this.hud.getSelectedDifficulty();
+
+    this.applySelectedDifficulty();
+
+    this.state = "playing";
+    this.elapsedTime = 0;
+    this.hitCount = 0;
+    this.nextGrenadeRewardAt =
+      GAME_CONFIG.grenade.rewardEveryHits;
+    this.scoreSubmitted = false;
+    this.scoreSubmitting = false;
+
+    this.road.reset();
+
+    this.road.updateCamera(
+      this.camera,
+      0,
+      true,
+    );
+
+    this.monster.reset();
+    this.gun.reset();
+    this.grenade.reset();
+    this.score.reset();
+
+    this.hud.clearStatusTimer();
+    this.hud.resetScoreRegistration();
+    this.hud.setTitleVisible(false);
+    this.hud.setGameOverVisible(false);
+    this.hud.setCrosshairVisible(
+      this.pointerInsideCanvas,
+    );
+    this.hud.setStatus(
+      "괴물이 접근 중입니다.",
+    );
+    this.updateHud();
+  }
+
+  public start(): void {
+    this.engine.runRenderLoop(() => {
+      const deltaTime = Math.min(
+        this.engine.getDeltaTime() / 1000,
+        0.05,
+      );
+
+      this.update(deltaTime);
+      this.scene.render();
+    });
+  }
+}

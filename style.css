@@ -1,0 +1,273 @@
+:root {
+  font-family:
+    Pretendard,
+    "Noto Sans KR",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: #ffffff;
+  background: #08090c;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #08090c;
+}
+
+#app {
+  position: relative;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: none;
+  touch-action: none;
+}
+
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 120ms ease,
+    filter 120ms ease,
+    transform 120ms ease;
+}
+
+#crosshair::before,
+#crosshair::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+  transform: translate(-50%, -50%);
+}
+
+#crosshair::before {
+  width: 28px;
+  height: 2px;
+}
+
+#crosshair::after {
+  width: 2px;
+  height: 28px;
+}
+
+#crosshair.crosshair--cooldown {
+  opacity: 0.22;
+  transform:
+    translate(-50%, -50%)
+    scale(0.9);
+}
+
+#crosshair.crosshair--reloading {
+  opacity: 0.12;
+  filter: grayscale(1);
+}
+
+#crosshair.crosshair--empty {
+  opacity: 0.18;
+  filter: grayscale(1);
+}
+
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  min-width: 230px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(5px);
+  line-height: 1.65;
+  pointer-events: none;
+}
+
+#hud strong {
+  color: #ffdf68;
+}
+
+#status-message {
+  min-height: 24px;
+  margin-top: 8px;
+  color: #ffffff;
+}
+
+#help {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.62);
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+
+#reload-warning {
+  position: fixed;
+  left: 50%;
+  bottom: 12%;
+  z-index: 60;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+#reload-warning[hidden] {
+  display: none;
+}
+
+.reload-warning__panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 18px;
+  border: 1px solid rgba(255, 100, 80, 0.75);
+  border-radius: 12px;
+  background: rgba(25, 6, 4, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 8px 30px rgba(0, 0, 0, 0.38);
+  animation: reload-warning-pulse 900ms ease-in-out infinite;
+}
+
+.reload-warning__text {
+  display: grid;
+  gap: 2px;
+}
+
+.reload-warning__text strong {
+  color: #ff795f;
+  font-size: 17px;
+}
+
+.reload-warning__text span {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+}
+
+.reload-warning__mouse {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 42px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 15px 15px 13px 13px;
+}
+
+.reload-warning__mouse::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  transform: translateX(-50%);
+}
+
+.reload-warning__right-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 17px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 92, 68, 0.82);
+}
+
+@keyframes reload-warning-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+
+  50% {
+    transform: scale(1.035);
+    opacity: 1;
+  }
+}
+
+#game-over {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+#game-over[hidden] {
+  display: none;
+}
+
+.game-over-panel {
+  width: min(90%, 420px);
+  padding: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(15, 16, 20, 0.96);
+  text-align: center;
+}
+
+.game-over-panel h1 {
+  margin: 0 0 12px;
+  color: #ff4b4b;
+  font-size: 42px;
+}
+
+.game-over-panel p {
+  margin: 0 0 24px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+#restart-button {
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111111;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#restart-button:hover {
+  background: #dddddd;
+}

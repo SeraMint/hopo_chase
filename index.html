@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Hopo Chase</title>
+  </head>
+
+  <body>
+    <main id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <button
+        id="sound-toggle"
+        type="button"
+        aria-pressed="true"
+        aria-label="게임 소리 끄기"
+      >
+        🔊 소리 켜짐
+      </button>
+
+      <div id="crosshair" aria-hidden="true"></div>
+
+      <section id="hud" aria-live="polite">
+        <div>
+          명중:
+          <strong id="hit-count">0</strong>
+        </div>
+
+        <div>
+          몬스터 거리:
+          <strong id="nearest-distance">-</strong>
+        </div>
+
+        <div id="status-message">
+          게임 시작 버튼을 눌러주세요.
+        </div>
+      </section>
+
+      <div id="help">
+        마우스 이동: 조준 · 왼쪽 클릭: 사격 · 우클릭: 재장전 · 휠 버튼 홀드/이동/릴리스: 유탄
+      </div>
+
+      <section id="title-screen" aria-labelledby="game-title">
+        <div class="title-screen__panel">
+          <p class="title-screen__eyebrow">SURVIVAL CHASE</p>
+          <h1 id="game-title">HOPO CHASE</h1>
+
+          <p class="title-screen__description">
+            달리는 차량을 뒤쫓는 괴물을 밀어내며 최대한 멀리 생존하세요.
+            시간이 지날수록 괴물은 더 빨라집니다.
+          </p>
+
+          <section
+            class="title-screen__difficulty"
+            aria-labelledby="difficulty-title"
+          >
+            <h2 id="difficulty-title">난이도 선택</h2>
+
+            <div
+              class="difficulty-selector"
+              role="radiogroup"
+              aria-label="게임 난이도"
+            >
+              <label class="difficulty-check">
+                <input
+                  type="radio"
+                  name="difficulty"
+                  value="easy"
+                />
+                <span
+                  class="difficulty-check__radio"
+                  aria-hidden="true"
+                ></span>
+                <span>쉬움</span>
+              </label>
+
+              <label class="difficulty-check">
+                <input
+                  type="radio"
+                  name="difficulty"
+                  value="normal"
+                  checked
+                />
+                <span
+                  class="difficulty-check__radio"
+                  aria-hidden="true"
+                ></span>
+                <span>보통</span>
+              </label>
+
+              <label class="difficulty-check">
+                <input
+                  type="radio"
+                  name="difficulty"
+                  value="hard"
+                />
+                <span
+                  class="difficulty-check__radio"
+                  aria-hidden="true"
+                ></span>
+                <span>어려움</span>
+              </label>
+            </div>
+          </section>
+
+          <section
+            class="title-screen__guide"
+            aria-labelledby="guide-title"
+          >
+            <h2 id="guide-title">이용 방법</h2>
+
+            <div
+              class="title-screen__controls"
+              aria-label="게임 조작법"
+            >
+              <div>
+                <strong>왼쪽 클릭</strong>
+                <span>일반탄 사격</span>
+              </div>
+              <div>
+                <strong>우클릭</strong>
+                <span>탄창 재장전</span>
+              </div>
+              <div>
+                <strong>휠 버튼 홀드</strong>
+                <span>유탄 궤적 조준</span>
+              </div>
+              <div>
+                <strong>홀드 중 상하 이동</strong>
+                <span>위: 멀리 · 아래: 가까이</span>
+              </div>
+              <div>
+                <strong>휠 버튼 릴리스</strong>
+                <span>유탄 발사</span>
+              </div>
+            </div>
+          </section>
+
+          <p class="title-screen__reward">
+            일반탄과 유탄 명중을 합산해 10회 타격할 때마다 유탄 1발을 획득합니다.
+          </p>
+
+          <button id="start-button" type="button">
+            게임 시작
+          </button>
+        </div>
+      </section>
+
+      <div id="game-over" hidden>
+        <div class="game-over-panel">
+          <h1>GAME OVER</h1>
+          <p>괴물이 차량을 따라잡았습니다.</p>
+
+          <section
+            class="final-score"
+            aria-label="최종 기록"
+          >
+            <div>
+              <span>주행 거리</span>
+              <strong id="final-distance">0 m</strong>
+            </div>
+
+            <div>
+              <span>생존 시간</span>
+              <strong id="final-time">0.0초</strong>
+            </div>
+
+            <div>
+              <span>최종 랭크</span>
+              <strong id="final-rank">브론즈</strong>
+            </div>
+
+            <div>
+              <span>난이도</span>
+              <strong id="final-difficulty">쉬움</strong>
+            </div>
+          </section>
+
+          <section class="score-registration">
+            <label for="player-name">
+              스코어보드 이름
+            </label>
+
+            <div class="score-registration__controls">
+              <input
+                id="player-name"
+                type="text"
+                maxlength="12"
+                autocomplete="nickname"
+                placeholder="PLAYER"
+              />
+
+              <button
+                id="submit-score-button"
+                type="button"
+              >
+                기록 등록
+              </button>
+            </div>
+
+            <div
+              id="score-feedback"
+              aria-live="polite"
+            ></div>
+          </section>
+
+          <section class="leaderboard">
+            <h2>난이도별 로컬 TOP 10</h2>
+
+            <div class="leaderboard-split">
+              <section class="leaderboard-group">
+                <h3>| 쉬움 |</h3>
+                <ol class="scoreboard-list" data-difficulty="easy"></ol>
+              </section>
+              <section class="leaderboard-group">
+                <h3>| 보통 |</h3>
+                <ol class="scoreboard-list" data-difficulty="normal"></ol>
+              </section>
+              <section class="leaderboard-group">
+                <h3>| 어려움 |</h3>
+                <ol class="scoreboard-list" data-difficulty="hard"></ol>
+              </section>
+            </div>
+          </section>
+
+          <button id="restart-button" type="button">
+            타이틀로 돌아가기
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
