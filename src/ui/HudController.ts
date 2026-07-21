@@ -60,6 +60,8 @@ interface ReloadCombatUi {
   percentElement: HTMLElement;
   ammoRack: HTMLDivElement;
   ammoSlotsElement: HTMLDivElement;
+  ammoCountElement: HTMLElement;
+  ammoStageElement: HTMLElement;
   completeFlash: HTMLDivElement;
 }
 
@@ -252,6 +254,12 @@ export class HudController {
   private readonly ammoSlotsElement:
     HTMLDivElement;
 
+  private readonly ammoRackCountElement:
+    HTMLElement;
+
+  private readonly ammoRackStageElement:
+    HTMLElement;
+
   private readonly reloadCompleteFlash:
     HTMLDivElement;
 
@@ -266,6 +274,11 @@ export class HudController {
 
   private reloadCompleteTimer:
     number | undefined;
+
+  private readonly textCache = new WeakMap<Node, string>();
+  private readonly hiddenCache = new WeakMap<HTMLElement, boolean>();
+  private readonly styleCache = new WeakMap<Element, Map<string, string>>();
+  private readonly classCache = new WeakMap<Element, Map<string, boolean>>();
 
   public constructor() {
     this.ammoElement =
@@ -373,6 +386,12 @@ export class HudController {
     this.ammoSlotsElement =
       reloadUi.ammoSlotsElement;
 
+    this.ammoRackCountElement =
+      reloadUi.ammoCountElement;
+
+    this.ammoRackStageElement =
+      reloadUi.ammoStageElement;
+
     this.reloadCompleteFlash =
       reloadUi.completeFlash;
 
@@ -385,6 +404,71 @@ export class HudController {
       helpElement.textContent =
         "마우스 이동: 조준 · 왼쪽 클릭: 사격 · 우클릭: 재장전 · 휠 버튼 홀드/릴리스: 유탄";
     }
+  }
+
+  private setText(element: Node, value: string): void {
+    if (
+      this.textCache.get(element) === value &&
+      element.textContent === value
+    ) {
+      return;
+    }
+
+    element.textContent = value;
+    this.textCache.set(element, value);
+  }
+
+  private setHidden(element: HTMLElement, hidden: boolean): void {
+    if (
+      this.hiddenCache.get(element) === hidden &&
+      element.hidden === hidden
+    ) {
+      return;
+    }
+
+    element.hidden = hidden;
+    this.hiddenCache.set(element, hidden);
+  }
+
+  private setStyle(element: Element, property: string, value: string): void {
+    let values = this.styleCache.get(element);
+
+    if (!values) {
+      values = new Map<string, string>();
+      this.styleCache.set(element, values);
+    }
+
+    const style =
+      (element as HTMLElement | SVGElement).style;
+
+    if (
+      values.get(property) === value &&
+      style.getPropertyValue(property) === value
+    ) {
+      return;
+    }
+
+    style.setProperty(property, value);
+    values.set(property, value);
+  }
+
+  private toggleClass(element: Element, className: string, enabled: boolean): void {
+    let values = this.classCache.get(element);
+
+    if (!values) {
+      values = new Map<string, boolean>();
+      this.classCache.set(element, values);
+    }
+
+    if (
+      values.get(className) === enabled &&
+      element.classList.contains(className) === enabled
+    ) {
+      return;
+    }
+
+    element.classList.toggle(className, enabled);
+    values.set(className, enabled);
   }
 
   private createHudValue(
@@ -634,7 +718,21 @@ export class HudController {
         ".ammo-rack__slots",
       );
 
-    if (!ammoSlotsElement) {
+    const ammoCountElement =
+      ammoRack.querySelector<HTMLElement>(
+        ".ammo-rack__count",
+      );
+
+    const ammoStageElement =
+      ammoRack.querySelector<HTMLElement>(
+        ".ammo-rack__stage",
+      );
+
+    if (
+      !ammoSlotsElement ||
+      !ammoCountElement ||
+      !ammoStageElement
+    ) {
       throw new Error(
         "탄창 슬롯 UI 생성에 실패했습니다.",
       );
@@ -666,6 +764,8 @@ export class HudController {
       percentElement,
       ammoRack,
       ammoSlotsElement,
+      ammoCountElement,
+      ammoStageElement,
       completeFlash,
     };
   }
@@ -716,116 +816,116 @@ export class HudController {
   public update(
     view: HudViewModel,
   ): void {
-    this.hitCountElement.textContent =
-      String(view.hitCount);
+    this.setText(this.hitCountElement, String(view.hitCount));
+    this.setText(
+      this.distanceElement,
+      `${Math.max(0, view.monsterDistance).toFixed(1)} m`,
+    );
+    this.setText(
+      this.ammoElement,
+      `${view.currentAmmo} / ${view.magazineSize}`,
+    );
+    this.setText(
+      this.travelledDistanceElement,
+      `${Math.floor(view.distanceTravelled).toLocaleString()} m`,
+    );
+    this.setText(
+      this.survivalTimeElement,
+      `${view.survivalTime.toFixed(1)}초`,
+    );
+    this.setText(this.rankElement, view.rank);
+    this.setText(this.difficultyNameElement, view.difficultyLabel);
+    this.setText(
+      this.difficultyElement,
+      `x${view.monsterSpeedMultiplier.toFixed(2)}`,
+    );
 
-    this.distanceElement.textContent =
-      `${Math.max(
-        0,
-        view.monsterDistance,
-      ).toFixed(1)} m`;
-
-    this.ammoElement.textContent =
-      `${view.currentAmmo} / ${view.magazineSize}`;
-
-    this.travelledDistanceElement.textContent =
-      `${Math.floor(
-        view.distanceTravelled,
-      ).toLocaleString()} m`;
-
-    this.survivalTimeElement.textContent =
-      `${view.survivalTime.toFixed(1)}초`;
-
-    this.rankElement.textContent =
-      view.rank;
-
-    this.difficultyNameElement.textContent =
-      view.difficultyLabel;
-
-    this.difficultyElement.textContent =
-      `x${view.monsterSpeedMultiplier.toFixed(2)}`;
-
+    let grenadeStatus: string;
     if (view.grenadeAmmo <= 0) {
-      this.grenadeStatusElement.textContent =
-        "0발 · 탄약 없음";
+      grenadeStatus = "0발 · 탄약 없음";
     } else if (view.isGrenadeAiming) {
-      this.grenadeStatusElement.textContent =
-        `${view.grenadeAmmo}발 · 조준 ${Math.round(
-          view.grenadeEstimatedDistance,
-        )}m`;
+      grenadeStatus = `${view.grenadeAmmo}발 · 조준 ${Math.round(view.grenadeEstimatedDistance)}m`;
     } else if (
       view.grenadeCooldownRemaining > 0
     ) {
-      this.grenadeStatusElement.textContent =
-        `${view.grenadeAmmo}발 · 재사용 ${view.grenadeCooldownRemaining.toFixed(1)}초`;
+      grenadeStatus = `${view.grenadeAmmo}발 · 재사용 ${view.grenadeCooldownRemaining.toFixed(1)}초`;
     } else {
-      this.grenadeStatusElement.textContent =
-        `${view.grenadeAmmo}발 · 발사 준비`;
+      grenadeStatus = `${view.grenadeAmmo}발 · 발사 준비`;
     }
+    this.setText(this.grenadeStatusElement, grenadeStatus);
 
+    let weaponStatus: string;
     if (view.isReloading) {
-      this.weaponStatusElement.textContent =
-        `재장전 중 ${view.reloadRemaining.toFixed(1)}초`;
+      weaponStatus = `재장전 중 ${view.reloadRemaining.toFixed(1)}초`;
     } else if (
       view.shotCooldownRemaining > 0
     ) {
-      this.weaponStatusElement.textContent =
-        `발사 대기 ${view.shotCooldownRemaining.toFixed(1)}초`;
+      weaponStatus = `발사 대기 ${view.shotCooldownRemaining.toFixed(1)}초`;
     } else if (view.needsReload) {
-      this.weaponStatusElement.textContent =
-        "재장전 필요";
+      weaponStatus = "재장전 필요";
     } else {
-      this.weaponStatusElement.textContent =
-        "발사 준비";
+      weaponStatus = "발사 준비";
     }
+    this.setText(this.weaponStatusElement, weaponStatus);
 
-    this.crosshair.classList.toggle(
+    this.toggleClass(
+      this.crosshair,
       "crosshair--cooldown",
       view.shotCooldownRemaining > 0 &&
         !view.isReloading &&
         !view.needsReload,
     );
 
-    this.crosshair.classList.toggle(
+    this.toggleClass(
+      this.crosshair,
       "crosshair--reloading",
       view.isReloading,
     );
 
-    this.crosshair.classList.toggle(
+    this.toggleClass(
+      this.crosshair,
       "crosshair--empty",
       view.needsReload,
     );
 
-    this.crosshair.classList.toggle(
+    this.toggleClass(
+      this.crosshair,
       "crosshair--grenade-aiming",
       view.isGrenadeAiming,
     );
 
-    this.grenadeAimHint.hidden =
+    this.setHidden(
+      this.grenadeAimHint,
       !(
         view.isGrenadeAiming &&
         view.isPlaying
-      );
+      ),
+    );
 
-    this.grenadeAimDistanceElement.textContent =
-      `${Math.round(
-        view.grenadeEstimatedDistance,
-      )}m`;
+    this.setText(
+      this.grenadeAimDistanceElement,
+      `${Math.round(view.grenadeEstimatedDistance)}m`,
+    );
 
-    this.grenadeAimPowerElement.style.width =
+    this.setStyle(
+      this.grenadeAimPowerElement,
+      "width",
       `${Math.round(
         clamp(
           view.grenadeAimRangeFactor,
           0,
           1,
         ) * 100,
-      )}%`;
+      )}%`,
+    );
 
-    this.reloadWarning.hidden =
+    this.setHidden(
+      this.reloadWarning,
       !(
         view.needsReload &&
         view.isPlaying
-      );
+      ),
+    );
 
     this.updateReloadUi(view);
   }
@@ -850,24 +950,28 @@ export class HudController {
           ? 1
           : 0;
 
-    this.reloadOverlay.hidden =
-      !(
-        view.isReloading &&
-        view.isPlaying
-      );
+    this.setHidden(
+      this.reloadOverlay,
+      !(view.isReloading && view.isPlaying),
+    );
 
-    this.ammoRack.hidden =
-      !view.isPlaying;
+    this.setHidden(this.ammoRack, !view.isPlaying);
 
-    this.reloadProgressCircle.style
-      .strokeDashoffset =
-      String(100 - progress * 100);
+    this.setStyle(
+      this.reloadProgressCircle,
+      "stroke-dashoffset",
+      String(100 - progress * 100),
+    );
 
-    this.reloadTimeElement.textContent =
-      `${view.reloadRemaining.toFixed(1)}s`;
+    this.setText(
+      this.reloadTimeElement,
+      `${view.reloadRemaining.toFixed(1)}s`,
+    );
 
-    this.reloadPercentElement.textContent =
-      `${Math.round(progress * 100)}%`;
+    this.setText(
+      this.reloadPercentElement,
+      `${Math.round(progress * 100)}%`,
+    );
 
     const stage =
       this.getReloadStage(progress);
@@ -997,58 +1101,46 @@ export class HudController {
           stage !== "remove" &&
           index === displayedAmmo - 1;
 
-        slot.classList.toggle(
+        this.toggleClass(
+          slot,
           "ammo-rack__bullet--filled",
           isFilled,
         );
 
-        slot.classList.toggle(
+        this.toggleClass(
+          slot,
           "ammo-rack__bullet--loading",
           isNewestRound,
         );
       },
     );
 
-    const countElement =
-      this.ammoRack.querySelector<HTMLElement>(
-        ".ammo-rack__count",
-      );
+    this.setText(
+      this.ammoRackCountElement,
+      `${displayedAmmo} / ${view.magazineSize}`,
+    );
 
-    const stageElement =
-      this.ammoRack.querySelector<HTMLElement>(
-        ".ammo-rack__stage",
-      );
-
-    if (countElement) {
-      countElement.textContent =
-        `${displayedAmmo} / ${view.magazineSize}`;
+    let ammoStageText: string;
+    if (view.isReloading) {
+      ammoStageText =
+        this.reloadStageElement.textContent ?? "재장전 중";
+    } else if (view.needsReload) {
+      ammoStageText = "우클릭으로 재장전";
+    } else if (view.shotCooldownRemaining > 0) {
+      ammoStageText = "발사 준비 중";
+    } else {
+      ammoStageText = "발사 준비";
     }
+    this.setText(this.ammoRackStageElement, ammoStageText);
 
-    if (stageElement) {
-      if (view.isReloading) {
-        stageElement.textContent =
-          this.reloadStageElement.textContent ??
-          "재장전 중";
-      } else if (view.needsReload) {
-        stageElement.textContent =
-          "우클릭으로 재장전";
-      } else if (
-        view.shotCooldownRemaining > 0
-      ) {
-        stageElement.textContent =
-          "발사 준비 중";
-      } else {
-        stageElement.textContent =
-          "발사 준비";
-      }
-    }
-
-    this.ammoRack.classList.toggle(
+    this.toggleClass(
+      this.ammoRack,
       "ammo-rack--reloading",
       view.isReloading,
     );
 
-    this.ammoRack.classList.toggle(
+    this.toggleClass(
+      this.ammoRack,
       "ammo-rack--empty",
       view.needsReload,
     );
