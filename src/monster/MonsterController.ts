@@ -107,7 +107,22 @@ export class MonsterController {
   private hitFlashColor = Color3.Black();
   private hitFlashActive = false;
   private readonly jumpOffset = Vector3.Zero();
+  private readonly bulletHitFlashColor = new Color3(0.95, 0.075, 0.025);
+  private readonly grenadeHitFlashColor = new Color3(1, 0.52, 0.04);
+  private readonly explosionOffset = Vector3.Zero();
+  private readonly explosionDirection = Vector3.Zero();
+  private readonly explosionRoadTangent = Vector3.Zero();
   private readonly movementRoadSample: RoadSample = {
+    position: Vector3.Zero(),
+    tangent: Vector3.Zero(),
+    right: Vector3.Zero(),
+    up: Vector3.Zero(),
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+    distanceAhead: 0,
+  };
+  private readonly explosionRoadSample: RoadSample = {
     position: Vector3.Zero(),
     tangent: Vector3.Zero(),
     right: Vector3.Zero(),
@@ -1901,7 +1916,7 @@ export class MonsterController {
 
     this.hitSquash = 0.16;
     this.startHitReaction(0.46, 0.72);
-    this.flashHitColor(new Color3(0.95, 0.075, 0.025), 95);
+    this.flashHitColor(this.bulletHitFlashColor, 95);
   }
 
   public applyGrenadeExplosion(
@@ -1910,7 +1925,11 @@ export class MonsterController {
     maximumKnockbackImpulse: number,
     maximumLateralImpulse: number,
   ): boolean {
-    const offset = this.mesh.position.subtract(explosionPosition);
+    const offset = this.explosionOffset;
+    this.mesh.position.subtractToRef(
+      explosionPosition,
+      offset,
+    );
 
     const horizontalDistance = Math.hypot(offset.x, offset.z);
 
@@ -1920,19 +1939,31 @@ export class MonsterController {
 
     const falloff = Math.max(0.18, 1 - horizontalDistance / explosionRadius);
 
-    let direction = new Vector3(offset.x, 0, offset.z);
+    const direction = this.explosionDirection;
+    direction.set(offset.x, 0, offset.z);
 
     if (direction.lengthSquared() < 0.0001) {
-      direction = new Vector3(Math.random() < 0.5 ? -0.3 : 0.3, 0, 1);
+      direction.set(Math.random() < 0.5 ? -0.3 : 0.3, 0, 1);
     }
 
     direction.normalize();
 
-    const roadSample: RoadSample = this.road.sample(this.forwardDistance);
+    const roadSample = this.road.sample(
+      this.forwardDistance,
+      0,
+      0,
+      this.explosionRoadSample,
+    );
+
+    this.explosionRoadTangent.set(
+      roadSample.tangent.x,
+      0,
+      roadSample.tangent.z,
+    ).normalize();
 
     const alongDirection = Vector3.Dot(
       direction,
-      new Vector3(roadSample.tangent.x, 0, roadSample.tangent.z).normalize(),
+      this.explosionRoadTangent,
     );
 
     const lateralDirection = Vector3.Dot(direction, roadSample.right);
@@ -1956,7 +1987,7 @@ export class MonsterController {
     this.hitSquash = 0.3;
     this.startHitReaction(0.72, 1);
 
-    this.flashHitColor(new Color3(1, 0.52, 0.04), 150);
+    this.flashHitColor(this.grenadeHitFlashColor, 150);
 
     return true;
   }
