@@ -57,7 +57,7 @@ export class Game {
   } as const;
 
   private readonly backgroundMusic = new Audio(backgroundMusicUrl);
-  private readonly activeSounds = new Set<HTMLAudioElement>();
+  private readonly soundPools = new Map<string, HTMLAudioElement[]>();
   private soundEnabled = true;
 
   private readonly canvas: HTMLCanvasElement;
@@ -242,10 +242,33 @@ export class Game {
 
   private preloadSounds(): void {
     for (const url of Object.values(this.soundUrls)) {
-      const audio = new Audio(url);
-      audio.preload = "auto";
-      audio.load();
+      const initialChannelCount =
+        url === this.soundUrls.rifleFire ? 3 : 1;
+      const channels = Array.from(
+        { length: initialChannelCount },
+        () => this.createSoundChannel(url),
+      );
+      this.soundPools.set(url, channels);
     }
+  }
+
+  private createSoundChannel(url: string): HTMLAudioElement {
+    const audio = new Audio(url);
+    audio.preload = "auto";
+    audio.load();
+    return audio;
+  }
+
+  private getMaximumSoundChannels(url: string): number {
+    if (url === this.soundUrls.rifleFire) {
+      return 6;
+    }
+
+    if (url === this.soundUrls.grenadeExplosion) {
+      return 3;
+    }
+
+    return 2;
   }
 
   private playSound(url: string): void {
@@ -253,16 +276,23 @@ export class Game {
       return;
     }
 
-    const audio = new Audio(url);
-    audio.preload = "auto";
-    this.activeSounds.add(audio);
-    audio.addEventListener(
-      "ended",
-      () => this.activeSounds.delete(audio),
-      { once: true },
+    const channels = this.soundPools.get(url) ?? [];
+    let audio = channels.find(
+      (channel) => channel.paused || channel.ended,
     );
+
+    if (!audio && channels.length < this.getMaximumSoundChannels(url)) {
+      audio = this.createSoundChannel(url);
+      channels.push(audio);
+      this.soundPools.set(url, channels);
+    }
+
+    if (!audio) {
+      return;
+    }
+
+    audio.currentTime = 0;
     void audio.play().catch(() => {
-      this.activeSounds.delete(audio);
       // 브라우저가 사용자 입력 전 자동 재생을 차단하면 재생을 건너뜁니다.
     });
   }
@@ -284,10 +314,12 @@ export class Game {
       this.startBackgroundMusic();
     } else {
       this.backgroundMusic.pause();
-      for (const audio of this.activeSounds) {
-        audio.pause();
+      for (const channels of this.soundPools.values()) {
+        for (const audio of channels) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
       }
-      this.activeSounds.clear();
     }
 
     this.hud.soundToggleButton.setAttribute(
