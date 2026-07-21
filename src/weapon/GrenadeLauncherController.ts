@@ -135,6 +135,12 @@ export class GrenadeLauncherController {
 
   private readonly identityMatrix = Matrix.Identity();
 
+  private readonly horizontalAimDirection = Vector3.Zero();
+
+  private readonly updateResult: GrenadeUpdateResult = {
+    explosions: [],
+  };
+
   private readonly guidePoints:
     Vector3[];
 
@@ -581,8 +587,9 @@ export class GrenadeLauncherController {
 
     this.updateLaunchOrigin();
 
-    this.aimVelocity =
-      this.calculateLaunchVelocity();
+    this.calculateLaunchVelocityToRef(
+      this.aimVelocity,
+    );
 
     this.calculateTrajectoryPoints(
       this.launchOrigin,
@@ -636,8 +643,9 @@ export class GrenadeLauncherController {
       );
   }
 
-  private calculateLaunchVelocity():
-    Vector3 {
+  private calculateLaunchVelocityToRef(
+    result: Vector3,
+  ): void {
     const ray = this.scene.createPickingRay(
       this.pointerX,
       this.pointerY,
@@ -646,11 +654,13 @@ export class GrenadeLauncherController {
     );
 
     const horizontalDirection =
-      new Vector3(
-        ray.direction.x,
-        0,
-        ray.direction.z,
-      );
+      this.horizontalAimDirection;
+
+    horizontalDirection.set(
+      ray.direction.x,
+      0,
+      ray.direction.z,
+    );
 
     if (
       horizontalDirection.lengthSquared() <
@@ -682,14 +692,11 @@ export class GrenadeLauncherController {
       this.rangeFactor,
     );
 
-    const velocity =
-      horizontalDirection.scale(
-        horizontalSpeed,
-      );
-
-    velocity.y = verticalSpeed;
-
-    return velocity;
+    result.set(
+      horizontalDirection.x * horizontalSpeed,
+      verticalSpeed,
+      horizontalDirection.z * horizontalSpeed,
+    );
   }
 
   private calculateTrajectoryPoints(
@@ -785,8 +792,10 @@ export class GrenadeLauncherController {
       this.refreshGuide();
     }
 
-    const explosions:
-      GrenadeExplosionEvent[] = [];
+    const explosions =
+      this.updateResult.explosions;
+
+    explosions.length = 0;
 
     for (
       let index =
@@ -868,9 +877,7 @@ export class GrenadeLauncherController {
       deltaTime,
     );
 
-    return {
-      explosions,
-    };
+    return this.updateResult;
   }
 
   private createExplosionVisual(
