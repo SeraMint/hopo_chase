@@ -89,6 +89,7 @@ interface ExplosionVisual {
     velocity: Vector3;
   }>;
   smokeParticles?: GPUParticleSystem;
+  smokeEmitter?: Vector3;
   fragments: Array<{
     mesh: Mesh;
     velocity: Vector3;
@@ -980,8 +981,10 @@ export class GrenadeLauncherController {
       );
       const angle = (smokeIndex / fallbackSmokeCount) * Math.PI * 2;
       smokeMesh.position.copyFrom(position);
-      smokeMesh.position.addInPlace(
-        new Vector3(Math.cos(angle) * 0.35, 0.35 + (smokeIndex % 2) * 0.2, Math.sin(angle) * 0.35),
+      smokeMesh.position.addInPlaceFromFloats(
+        Math.cos(angle) * 0.35,
+        0.35 + (smokeIndex % 2) * 0.2,
+        Math.sin(angle) * 0.35,
       );
       smokeMesh.scaling.setAll(0.15);
       smokeMesh.material = smokeMaterial;
@@ -1039,9 +1042,11 @@ export class GrenadeLauncherController {
       };
     });
 
+    const lightPosition = position.clone();
+    lightPosition.y += 1.1;
     const light = new PointLight(
       `grenade-explosion-light-${Date.now()}`,
-      position.add(new Vector3(0, 1.1, 0)),
+      lightPosition,
       this.scene,
     );
     light.diffuse = new Color3(1, 0.24, 0.025);
@@ -1055,6 +1060,7 @@ export class GrenadeLauncherController {
       shockwaveMaterial,
       smoke,
       smokeParticles: smokeParticleEffect?.system,
+      smokeEmitter: smokeParticleEffect?.emitter,
       fragments,
       fragmentMaterial,
       light,
@@ -1102,6 +1108,7 @@ export class GrenadeLauncherController {
 
   private createExplosionSmokeParticles(position: Vector3): {
     system: GPUParticleSystem;
+    emitter: Vector3;
   } {
     if (!this.explosionSmokeParticleTexture) {
       throw new Error("Explosion smoke texture is not available.");
@@ -1113,7 +1120,9 @@ export class GrenadeLauncherController {
       this.scene,
     );
     system.particleTexture = this.explosionSmokeParticleTexture;
-    system.emitter = position.add(new Vector3(0, 0.32, 0));
+    const emitter = position.clone();
+    emitter.y += 0.32;
+    system.emitter = emitter;
     system.minEmitBox = new Vector3(-0.28, 0, -0.28);
     system.maxEmitBox = new Vector3(0.28, 0.18, 0.28);
     system.direction1 = new Vector3(-1.35, 1.1, -1.35);
@@ -1133,7 +1142,7 @@ export class GrenadeLauncherController {
     system.gravity = new Vector3(0, 0.42, 0);
     system.targetStopDuration = 0.08;
 
-    return { system };
+    return { system, emitter };
   }
 
   private resetExplosionVisual(
@@ -1156,8 +1165,10 @@ export class GrenadeLauncherController {
     visual.smoke.forEach((smokePuff, smokeIndex) => {
       const angle = (smokeIndex / visual.smoke.length) * Math.PI * 2;
       smokePuff.mesh.position.copyFrom(position);
-      smokePuff.mesh.position.addInPlace(
-        new Vector3(Math.cos(angle) * 0.35, 0.35 + (smokeIndex % 2) * 0.2, Math.sin(angle) * 0.35),
+      smokePuff.mesh.position.addInPlaceFromFloats(
+        Math.cos(angle) * 0.35,
+        0.35 + (smokeIndex % 2) * 0.2,
+        Math.sin(angle) * 0.35,
       );
       smokePuff.mesh.scaling.setAll(0.15);
       smokePuff.mesh.setEnabled(true);
@@ -1169,8 +1180,9 @@ export class GrenadeLauncherController {
       );
     });
 
-    if (visual.smokeParticles) {
-      visual.smokeParticles.emitter = position.add(new Vector3(0, 0.32, 0));
+    if (visual.smokeParticles && visual.smokeEmitter) {
+      visual.smokeEmitter.copyFrom(position);
+      visual.smokeEmitter.y += 0.32;
       visual.smokeParticles.reset();
       visual.smokeParticles.manualEmitCount = this.explosionSmokeParticleCount;
       visual.smokeParticles.start();
@@ -1252,9 +1264,10 @@ export class GrenadeLauncherController {
         1,
       );
 
-      const easedProgress =
-        1 -
-        Math.pow(1 - progress, 3);
+      const remaining = 1 - progress;
+      const remainingSquared = remaining * remaining;
+      const remainingCubed = remainingSquared * remaining;
+      const easedProgress = 1 - remainingCubed;
 
       const diameter = lerp(
         0.15,
@@ -1267,15 +1280,19 @@ export class GrenadeLauncherController {
       );
 
       visual.material.alpha =
-        0.62 * (1 - progress);
+        0.62 * remaining;
 
       const shockwaveScale = lerp(0.2, visual.radius * 2.25, easedProgress);
       visual.shockwave.scaling.setAll(shockwaveScale);
-      visual.shockwaveMaterial.alpha = 0.72 * Math.pow(1 - progress, 2);
-      visual.light.intensity = 42 * Math.pow(1 - progress, 3);
+      visual.shockwaveMaterial.alpha = 0.72 * remainingSquared;
+      visual.light.intensity = 42 * remainingCubed;
 
       for (const smokePuff of visual.smoke) {
-        smokePuff.mesh.position.addInPlace(smokePuff.velocity.scale(deltaTime));
+        smokePuff.mesh.position.addInPlaceFromFloats(
+          smokePuff.velocity.x * deltaTime,
+          smokePuff.velocity.y * deltaTime,
+          smokePuff.velocity.z * deltaTime,
+        );
         smokePuff.velocity.scaleInPlace(Math.max(0, 1 - deltaTime * 0.7));
         smokePuff.mesh.scaling.setAll(lerp(0.15, 2.2, easedProgress));
         smokePuff.material.alpha = 0.5 * Math.sin(progress * Math.PI);
@@ -1283,7 +1300,11 @@ export class GrenadeLauncherController {
 
       for (const fragment of visual.fragments) {
         fragment.velocity.y -= 9.8 * deltaTime;
-        fragment.mesh.position.addInPlace(fragment.velocity.scale(deltaTime));
+        fragment.mesh.position.addInPlaceFromFloats(
+          fragment.velocity.x * deltaTime,
+          fragment.velocity.y * deltaTime,
+          fragment.velocity.z * deltaTime,
+        );
         fragment.mesh.rotation.x += fragment.spin.x * deltaTime;
         fragment.mesh.rotation.y += fragment.spin.y * deltaTime;
         fragment.mesh.rotation.z += fragment.spin.z * deltaTime;
