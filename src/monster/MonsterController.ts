@@ -107,6 +107,16 @@ export class MonsterController {
   private hitFlashColor = Color3.Black();
   private hitFlashActive = false;
   private readonly jumpOffset = Vector3.Zero();
+  private readonly movementRoadSample: RoadSample = {
+    position: Vector3.Zero(),
+    tangent: Vector3.Zero(),
+    right: Vector3.Zero(),
+    up: Vector3.Zero(),
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+    distanceAhead: 0,
+  };
 
   /**
    * 달리기 애니메이션이 계산한 실제 도약 높이입니다.
@@ -1165,6 +1175,7 @@ export class MonsterController {
       this.forwardDistance,
       this.currentLateralOffset,
       this.config.startPosition.y,
+      this.movementRoadSample,
     );
 
     this.mesh.position.copyFrom(roadSample.position);
