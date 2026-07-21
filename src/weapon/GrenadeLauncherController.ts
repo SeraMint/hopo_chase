@@ -89,7 +89,6 @@ interface ExplosionVisual {
     velocity: Vector3;
   }>;
   smokeParticles?: GPUParticleSystem;
-  smokeParticleTexture?: RawTexture;
   fragments: Array<{
     mesh: Mesh;
     velocity: Vector3;
@@ -134,6 +133,9 @@ export class GrenadeLauncherController {
   private readonly launchOrigin:
     Vector3;
 
+  private readonly guidePoints:
+    Vector3[];
+
   private readonly guideLine: LinesMesh;
   private readonly landingMarker: Mesh;
 
@@ -163,11 +165,17 @@ export class GrenadeLauncherController {
   private readonly activeGrenades:
     ActiveGrenade[] = [];
 
+  private readonly grenadeMeshPool:
+    Mesh[] = [];
+
   private readonly explosionVisuals:
     ExplosionVisual[] = [];
 
   private readonly explosionVisualPool:
     ExplosionVisual[] = [];
+
+  private readonly explosionSmokeParticleTexture:
+    RawTexture | null;
 
   public constructor(
     scene: Scene,
@@ -181,6 +189,10 @@ export class GrenadeLauncherController {
     this.config = config;
     this.road = road;
     this.graphicsQuality = graphicsQuality;
+    this.explosionSmokeParticleTexture =
+      GPUParticleSystem.IsSupported
+        ? this.createExplosionSmokeParticleTexture()
+        : null;
     this.ammo = config.initialAmmo;
     this.rangeFactor =
       config.defaultRangeFactor;
@@ -189,6 +201,11 @@ export class GrenadeLauncherController {
       config.launchOrigin.x,
       config.launchOrigin.y,
       config.launchOrigin.z,
+    );
+
+    this.guidePoints = Array.from(
+      { length: config.guidePointCount },
+      () => this.launchOrigin.clone(),
     );
 
     this.grenadeMaterial =
@@ -258,18 +275,10 @@ export class GrenadeLauncherController {
   }
 
   private createGuideLine(): LinesMesh {
-    const points = Array.from(
-      {
-        length:
-          this.config.guidePointCount,
-      },
-      () => this.launchOrigin.clone(),
-    );
-
     const line = MeshBuilder.CreateLines(
       "grenade-trajectory-guide",
       {
-        points,
+        points: this.guidePoints,
         updatable: true,
       },
       this.scene,
@@ -445,6 +454,24 @@ export class GrenadeLauncherController {
     origin: Vector3,
     velocity: Vector3,
   ): void {
+    const mesh =
+      this.grenadeMeshPool.pop() ??
+      this.createGrenadeMesh();
+
+    mesh.position.copyFrom(origin);
+    mesh.rotation.set(0, 0, 0);
+    mesh.setEnabled(true);
+
+    this.activeGrenades.push({
+      mesh,
+      origin: origin.clone(),
+      initialVelocity:
+        velocity.clone(),
+      elapsedTime: 0,
+    });
+  }
+
+  private createGrenadeMesh(): Mesh {
     const name = `grenade-${Date.now()}`;
     const radius = this.config.grenadeRadius;
     const mesh = new Mesh(name, this.scene);
@@ -461,6 +488,7 @@ export class GrenadeLauncherController {
     body.parent = mesh;
     body.position.y = -radius * 0.18;
     body.material = this.grenadeMaterial;
+    body.isPickable = false;
 
     const nose = MeshBuilder.CreateCylinder(
       `${name}-nose`,
@@ -475,6 +503,7 @@ export class GrenadeLauncherController {
     nose.parent = mesh;
     nose.position.y = radius * 0.82;
     nose.material = this.grenadeMaterial;
+    nose.isPickable = false;
 
     const fuse = MeshBuilder.CreateCylinder(
       `${name}-fuse`,
@@ -488,6 +517,7 @@ export class GrenadeLauncherController {
     fuse.parent = mesh;
     fuse.position.y = radius * 1.22;
     fuse.material = this.grenadeMetalMaterial;
+    fuse.isPickable = false;
 
     const base = MeshBuilder.CreateCylinder(
       `${name}-base`,
@@ -501,6 +531,7 @@ export class GrenadeLauncherController {
     base.parent = mesh;
     base.position.y = -radius * 0.98;
     base.material = this.grenadeMetalMaterial;
+    base.isPickable = false;
 
     const band = MeshBuilder.CreateCylinder(
       `${name}-band`,
@@ -514,17 +545,21 @@ export class GrenadeLauncherController {
     band.parent = mesh;
     band.position.y = -radius * 0.72;
     band.material = this.grenadeBandMaterial;
+    band.isPickable = false;
 
-    mesh.position.copyFrom(origin);
     mesh.isPickable = false;
+    return mesh;
+  }
 
-    this.activeGrenades.push({
-      mesh,
-      origin: origin.clone(),
-      initialVelocity:
-        velocity.clone(),
-      elapsedTime: 0,
-    });
+  private releaseGrenadeMesh(mesh: Mesh): void {
+    mesh.setEnabled(false);
+
+    if (this.grenadeMeshPool.length < 4) {
+      this.grenadeMeshPool.push(mesh);
+      return;
+    }
+
+    mesh.dispose();
   }
 
   private updateLaunchOrigin(): void {
@@ -547,23 +582,24 @@ export class GrenadeLauncherController {
     this.aimVelocity =
       this.calculateLaunchVelocity();
 
-    const points =
-      this.calculateTrajectoryPoints(
-        this.launchOrigin,
-        this.aimVelocity,
-      );
+    this.calculateTrajectoryPoints(
+      this.launchOrigin,
+      this.aimVelocity,
+    );
 
     MeshBuilder.CreateLines(
       "grenade-trajectory-guide",
       {
-        points,
+        points: this.guidePoints,
         instance: this.guideLine,
       },
       this.scene,
     );
 
     const finalPoint =
-      points[points.length - 1];
+      this.guidePoints[
+        this.guidePoints.length - 1
+      ];
 
     this.landingPosition.copyFrom(
       finalPoint,
@@ -657,13 +693,8 @@ export class GrenadeLauncherController {
   private calculateTrajectoryPoints(
     origin: Vector3,
     initialVelocity: Vector3,
-  ): Vector3[] {
-    const points: Vector3[] = [];
-
-    let landingPoint =
-      origin.clone();
-
-    let hasLanded = false;
+  ): void {
+    let landingPointIndex = -1;
 
     for (
       let index = 0;
@@ -671,9 +702,11 @@ export class GrenadeLauncherController {
       this.config.guidePointCount;
       index += 1
     ) {
-      if (hasLanded) {
-        points.push(
-          landingPoint.clone(),
+      const point = this.guidePoints[index];
+
+      if (landingPointIndex >= 0) {
+        point.copyFrom(
+          this.guidePoints[landingPointIndex],
         );
 
         continue;
@@ -683,12 +716,12 @@ export class GrenadeLauncherController {
         index *
         this.config.guideTimeStep;
 
-      const point =
-        this.sampleTrajectory(
-          origin,
-          initialVelocity,
-          time,
-        );
+      this.sampleTrajectoryToRef(
+        origin,
+        initialVelocity,
+        time,
+        point,
+      );
 
       const groundHeight =
         this.road.getGroundHeight(
@@ -700,22 +733,18 @@ export class GrenadeLauncherController {
       ) {
         point.y = groundHeight;
 
-        landingPoint = point.clone();
-        hasLanded = true;
+        landingPointIndex = index;
       }
-
-      points.push(point);
     }
-
-    return points;
   }
 
-  private sampleTrajectory(
+  private sampleTrajectoryToRef(
     origin: Vector3,
     initialVelocity: Vector3,
     time: number,
-  ): Vector3 {
-    return new Vector3(
+    result: Vector3,
+  ): void {
+    result.set(
       origin.x +
         initialVelocity.x * time,
 
@@ -768,15 +797,11 @@ export class GrenadeLauncherController {
 
       grenade.elapsedTime += deltaTime;
 
-      const position =
-        this.sampleTrajectory(
-          grenade.origin,
-          grenade.initialVelocity,
-          grenade.elapsedTime,
-        );
-
-      grenade.mesh.position.copyFrom(
-        position,
+      this.sampleTrajectoryToRef(
+        grenade.origin,
+        grenade.initialVelocity,
+        grenade.elapsedTime,
+        grenade.mesh.position,
       );
 
       grenade.mesh.rotation.x +=
@@ -787,11 +812,11 @@ export class GrenadeLauncherController {
 
       const currentGroundHeight =
         this.road.getGroundHeight(
-          position,
+          grenade.mesh.position,
         );
 
       const touchedGround =
-        position.y <=
+        grenade.mesh.position.y <=
         currentGroundHeight +
           this.config.grenadeRadius;
 
@@ -811,7 +836,9 @@ export class GrenadeLauncherController {
           explosionPosition,
         );
 
-      grenade.mesh.dispose();
+      this.releaseGrenadeMesh(
+        grenade.mesh,
+      );
 
       this.activeGrenades.splice(
         index,
@@ -1009,7 +1036,6 @@ export class GrenadeLauncherController {
       shockwaveMaterial,
       smoke,
       smokeParticles: smokeParticleEffect?.system,
-      smokeParticleTexture: smokeParticleEffect?.texture,
       fragments,
       fragmentMaterial,
       light,
@@ -1020,10 +1046,7 @@ export class GrenadeLauncherController {
     });
   }
 
-  private createExplosionSmokeParticles(position: Vector3): {
-    system: GPUParticleSystem;
-    texture: RawTexture;
-  } {
+  private createExplosionSmokeParticleTexture(): RawTexture {
     const size = 48;
     const data = new Uint8Array(size * size * 4);
     const center = (size - 1) * 0.5;
@@ -1054,14 +1077,23 @@ export class GrenadeLauncherController {
       false,
       Texture.TRILINEAR_SAMPLINGMODE,
     );
-    texture.name = `grenade-smoke-particle-texture-${Date.now()}`;
+    texture.name = "grenade-smoke-particle-texture";
+    return texture;
+  }
+
+  private createExplosionSmokeParticles(position: Vector3): {
+    system: GPUParticleSystem;
+  } {
+    if (!this.explosionSmokeParticleTexture) {
+      throw new Error("Explosion smoke texture is not available.");
+    }
 
     const system = new GPUParticleSystem(
       `grenade-smoke-particles-${Date.now()}`,
       { capacity: this.explosionSmokeParticleCount + 24 },
       this.scene,
     );
-    system.particleTexture = texture;
+    system.particleTexture = this.explosionSmokeParticleTexture;
     system.emitter = position.add(new Vector3(0, 0.32, 0));
     system.minEmitBox = new Vector3(-0.28, 0, -0.28);
     system.maxEmitBox = new Vector3(0.28, 0.18, 0.28);
@@ -1082,7 +1114,7 @@ export class GrenadeLauncherController {
     system.gravity = new Vector3(0, 0.42, 0);
     system.targetStopDuration = 0.08;
 
-    return { system, texture };
+    return { system };
   }
 
   private resetExplosionVisual(
@@ -1174,7 +1206,6 @@ export class GrenadeLauncherController {
       smokePuff.material.dispose();
     }
     visual.smokeParticles?.dispose();
-    visual.smokeParticleTexture?.dispose();
     for (const fragment of visual.fragments) {
       fragment.mesh.dispose();
     }
@@ -1265,7 +1296,9 @@ export class GrenadeLauncherController {
       const grenade
       of this.activeGrenades
     ) {
-      grenade.mesh.dispose();
+      this.releaseGrenadeMesh(
+        grenade.mesh,
+      );
     }
 
     this.activeGrenades.length = 0;

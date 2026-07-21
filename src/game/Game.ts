@@ -45,7 +45,6 @@ type GraphicsQuality = "low" | "medium" | "high";
 
 interface BulletVisualPoolItem {
   tracer: LinesMesh;
-  light: PointLight;
   active: boolean;
 }
 
@@ -65,6 +64,7 @@ export class Game {
   private readonly engine: Engine;
   private readonly scene: Scene;
   private readonly camera: UniversalCamera;
+  private readonly muzzleFlashLight: PointLight;
   private readonly bulletVisualPool: BulletVisualPoolItem[] = [];
 
   private readonly road: RoadController;
@@ -101,6 +101,8 @@ export class Game {
   private scoreSubmitting = false;
   private cameraShakeTrauma = 0;
   private cameraShakeTime = 0;
+  private muzzleFlashRemaining = 0;
+  private resourcesReady = false;
 
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -129,6 +131,7 @@ export class Game {
 
     this.camera = this.createCamera();
     this.createLighting();
+    this.muzzleFlashLight = this.createMuzzleFlashLight();
 
     this.road = new RoadController(
       this.scene,
@@ -199,6 +202,42 @@ export class Game {
     this.backgroundMusic.preload = "auto";
     this.backgroundMusic.volume = 0.45;
     this.preloadSounds();
+    void this.prepareGameResources();
+  }
+
+  private createMuzzleFlashLight(): PointLight {
+    const light = new PointLight(
+      "muzzle-flash-light",
+      Vector3.Zero(),
+      this.scene,
+    );
+    light.diffuse = new Color3(1, 0.36, 0.06);
+    light.range = 7;
+    light.intensity = 0;
+    return light;
+  }
+
+  private async prepareGameResources(): Promise<void> {
+    const startButton = this.hud.startButton;
+    startButton.disabled = true;
+    startButton.textContent = "게임 준비 중...";
+
+    const visual = this.acquireBulletVisual();
+    visual.tracer.alpha = 0;
+    visual.tracer.setEnabled(true);
+
+    try {
+      await this.scene.whenReadyAsync();
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    } finally {
+      visual.tracer.setEnabled(false);
+      visual.active = false;
+      this.resourcesReady = true;
+      startButton.disabled = false;
+      startButton.textContent = "게임 시작";
+    }
   }
 
   private preloadSounds(): void {
@@ -824,13 +863,13 @@ export class Game {
       },
       this.scene,
     );
-    const flashLight = visual.light;
+    const flashLight = this.muzzleFlashLight;
 
     tracer.alpha = 0.95;
     tracer.setEnabled(true);
     flashLight.position.copyFrom(origin);
     flashLight.intensity = 8;
-    flashLight.setEnabled(true);
+    this.muzzleFlashRemaining = 0.09;
 
     this.addCameraShake(0.065);
 
@@ -843,7 +882,6 @@ export class Game {
       const progress = Math.min(elapsed / lifetime, 1);
 
       tracer.alpha = 1 - progress;
-      flashLight.intensity = 8 * Math.max(0, 1 - progress * 3.5);
 
       if (progress < 1) {
         return;
@@ -851,7 +889,6 @@ export class Game {
 
       this.scene.onBeforeRenderObservable.remove(observer);
       tracer.setEnabled(false);
-      flashLight.setEnabled(false);
       visual.active = false;
     });
   }
@@ -873,14 +910,20 @@ export class Game {
     tracer.isPickable = false;
     tracer.setEnabled(false);
 
-    const light = new PointLight("muzzle-flash-light-pooled", Vector3.Zero(), this.scene);
-    light.diffuse = new Color3(1, 0.36, 0.06);
-    light.range = 7;
-    light.setEnabled(false);
-
-    const visual = { tracer, light, active: true };
+    const visual = { tracer, active: true };
     this.bulletVisualPool.push(visual);
     return visual;
+  }
+
+  private updateMuzzleFlash(deltaTime: number): void {
+    this.muzzleFlashRemaining = Math.max(
+      0,
+      this.muzzleFlashRemaining - deltaTime,
+    );
+
+    const progress = this.muzzleFlashRemaining / 0.09;
+    this.muzzleFlashLight.intensity =
+      8 * Math.min(1, progress * 3.5);
   }
 
   private addCameraShake(amount: number): void {
@@ -1048,6 +1091,7 @@ export class Game {
     }
 
     this.elapsedTime += deltaTime;
+    this.updateMuzzleFlash(deltaTime);
     this.updateDynamicResolution(deltaTime);
     this.score.update(deltaTime);
 
@@ -1250,6 +1294,10 @@ export class Game {
   }
 
   private startRun(): void {
+    if (!this.resourcesReady) {
+      return;
+    }
+
     this.startBackgroundMusic();
     this.cameraShakeTrauma = 0;
     this.cameraShakeTime = 0;
