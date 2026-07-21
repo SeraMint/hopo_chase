@@ -2,7 +2,7 @@
 
 Hopo Chase는 달리는 차량을 추격하는 몬스터를 총기와 수류탄으로 저지하며 최대한 오래 생존하는 3D 웹 액션 게임입니다. 시간이 흐를수록 몬스터의 접근 속도가 빨라지며, 생존 시간과 주행 거리를 기준으로 기록을 경쟁합니다.
 
-프로젝트의 별도 소개 페이지는 [project-overview.html](./project-overview.html)에서 확인할 수 있습니다.
+게임 플레이: [https://seramint.github.io/hopo_chase/](https://seramint.github.io/hopo_chase/)
 
 ## 주요 기능
 
@@ -95,4 +95,3 @@ src/
 ├─ weapon/     소총 및 수류탄 처리
 └─ world/      도로, 차량 및 배경 환경
 ```
-
