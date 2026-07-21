@@ -77,7 +77,21 @@ interface RoadSegment {
   shoulder: Mesh;
   road: Mesh;
   centerLine: Mesh;
+  sample: RoadSample;
   distanceAhead: number;
+}
+
+function createRoadSample(): RoadSample {
+  return {
+    position: Vector3.Zero(),
+    tangent: Vector3.Zero(),
+    right: Vector3.Zero(),
+    up: Vector3.Zero(),
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+    distanceAhead: 0,
+  };
 }
 
 function clamp(
@@ -133,6 +147,10 @@ export class RoadController {
     derivative: Vector3.Zero(),
     horizontalSecondDerivative: 0,
   };
+
+  private readonly vehicleSample = createRoadSample();
+  private readonly cameraPositionSample = createRoadSample();
+  private readonly cameraTargetSample = createRoadSample();
 
   private progress = 0;
 
@@ -812,6 +830,7 @@ export class RoadController {
         shoulder,
         road,
         centerLine,
+        sample: createRoadSample(),
 
         distanceAhead:
           this.config.startDistance +
@@ -1157,6 +1176,7 @@ export class RoadController {
     distanceAhead: number,
     lateralOffset = 0,
     verticalOffset = 0,
+    result?: RoadSample,
   ): RoadSample {
     const currentPoint =
       this.currentCurvePoint;
@@ -1196,36 +1216,34 @@ export class RoadController {
       currentPoint.position.z;
 
     const localPosition =
-      new Vector3(
-        cosine * deltaX -
-          sine * deltaZ,
+      result?.position ?? Vector3.Zero();
 
-        deltaY,
-
-        sine * deltaX +
-          cosine * deltaZ,
-      );
+    localPosition.set(
+      cosine * deltaX - sine * deltaZ,
+      deltaY,
+      sine * deltaX + cosine * deltaZ,
+    );
 
     const derivative =
       targetPoint.derivative;
 
     const localTangent =
-      new Vector3(
-        cosine * derivative.x -
-          sine * derivative.z,
+      result?.tangent ?? Vector3.Zero();
 
-        derivative.y,
-
-        sine * derivative.x +
-          cosine * derivative.z,
-      ).normalize();
+    localTangent.set(
+      cosine * derivative.x - sine * derivative.z,
+      derivative.y,
+      sine * derivative.x + cosine * derivative.z,
+    ).normalize();
 
     const right =
-      new Vector3(
-        localTangent.z,
-        0,
-        -localTangent.x,
-      );
+      result?.right ?? Vector3.Zero();
+
+    right.set(
+      localTangent.z,
+      0,
+      -localTangent.x,
+    );
 
     if (
       right.lengthSquared() <
@@ -1236,7 +1254,9 @@ export class RoadController {
       right.normalize();
     }
 
-    const up = new Vector3(
+    const up = result?.up ?? Vector3.Zero();
+
+    up.set(
       localTangent.y * right.z,
       localTangent.z * right.x -
         localTangent.x * right.z,
@@ -1274,6 +1294,14 @@ export class RoadController {
       -0.075,
       0.075,
     );
+
+    if (result) {
+      result.yaw = yaw;
+      result.pitch = pitch;
+      result.roll = roll;
+      result.distanceAhead = distanceAhead;
+      return result;
+    }
 
     return {
       position: localPosition,
@@ -1434,6 +1462,9 @@ export class RoadController {
       const sample =
         this.sample(
           segment.distanceAhead,
+          0,
+          0,
+          segment.sample,
         );
 
       segment.root.position.copyFrom(
@@ -1449,7 +1480,7 @@ export class RoadController {
     }
 
     const vehicleSample =
-      this.sample(0);
+      this.sample(0, 0, 0, this.vehicleSample);
 
     this.vehicleRoot.position.copyFrom(
       vehicleSample.position,
@@ -1481,6 +1512,7 @@ export class RoadController {
           .distanceBehind,
         0,
         cameraConfig.height,
+        this.cameraPositionSample,
       );
 
     const targetSample =
@@ -1489,6 +1521,7 @@ export class RoadController {
           .lookAheadDistance,
         0,
         cameraConfig.targetHeight,
+        this.cameraTargetSample,
       );
 
     const interpolation =
