@@ -122,6 +122,18 @@ export class RoadController {
     TransformNode;
   private vehicleDustEmitter!: Mesh;
 
+  private readonly currentCurvePoint: CurvePoint = {
+    position: Vector3.Zero(),
+    derivative: Vector3.Zero(),
+    horizontalSecondDerivative: 0,
+  };
+
+  private readonly targetCurvePoint: CurvePoint = {
+    position: Vector3.Zero(),
+    derivative: Vector3.Zero(),
+    horizontalSecondDerivative: 0,
+  };
+
   private progress = 0;
 
   public constructor(
@@ -1006,9 +1018,10 @@ export class RoadController {
     return this.vehicleRoot.getChildMeshes();
   }
 
-  private getCurvePoint(
+  private getCurvePointToRef(
     progress: number,
-  ): CurvePoint {
+    result: CurvePoint,
+  ): void {
     const curve =
       this.config.curve;
 
@@ -1120,22 +1133,20 @@ export class RoadController {
           secondaryHorizontalPhase,
         );
 
-    return {
-      position: new Vector3(
-        x,
-        y,
-        progress,
-      ),
+    result.position.set(
+      x,
+      y,
+      progress,
+    );
 
-      derivative: new Vector3(
-        derivativeX,
-        derivativeY,
-        1,
-      ),
+    result.derivative.set(
+      derivativeX,
+      derivativeY,
+      1,
+    );
 
-      horizontalSecondDerivative:
-        secondDerivativeX,
-    };
+    result.horizontalSecondDerivative =
+      secondDerivativeX;
   }
 
   /**
@@ -1148,15 +1159,19 @@ export class RoadController {
     verticalOffset = 0,
   ): RoadSample {
     const currentPoint =
-      this.getCurvePoint(
-        this.progress,
-      );
-
+      this.currentCurvePoint;
     const targetPoint =
-      this.getCurvePoint(
-        this.progress +
-          distanceAhead,
-      );
+      this.targetCurvePoint;
+
+    this.getCurvePointToRef(
+      this.progress,
+      currentPoint,
+    );
+
+    this.getCurvePointToRef(
+      this.progress + distanceAhead,
+      targetPoint,
+    );
 
     const currentHeading =
       Math.atan2(
