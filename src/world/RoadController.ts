@@ -1185,20 +1185,25 @@ export class RoadController {
     const sine =
       Math.sin(currentHeading);
 
-    const delta =
-      targetPoint.position.subtract(
-        currentPoint.position,
-      );
+    const deltaX =
+      targetPoint.position.x -
+      currentPoint.position.x;
+    const deltaY =
+      targetPoint.position.y -
+      currentPoint.position.y;
+    const deltaZ =
+      targetPoint.position.z -
+      currentPoint.position.z;
 
     const localPosition =
       new Vector3(
-        cosine * delta.x -
-          sine * delta.z,
+        cosine * deltaX -
+          sine * deltaZ,
 
-        delta.y,
+        deltaY,
 
-        sine * delta.x +
-          cosine * delta.z,
+        sine * deltaX +
+          cosine * deltaZ,
       );
 
     const derivative =
@@ -1231,22 +1236,20 @@ export class RoadController {
       right.normalize();
     }
 
-    const up =
-      Vector3.Cross(
-        localTangent,
-        right,
-      ).normalize();
+    const up = new Vector3(
+      localTangent.y * right.z,
+      localTangent.z * right.x -
+        localTangent.x * right.z,
+      -localTangent.y * right.x,
+    ).normalize();
 
-    localPosition.addInPlace(
-      right.scale(
-        lateralOffset,
-      ),
-    );
-
-    localPosition.addInPlace(
-      up.scale(
-        verticalOffset,
-      ),
+    localPosition.addInPlaceFromFloats(
+      right.x * lateralOffset +
+        up.x * verticalOffset,
+      right.y * lateralOffset +
+        up.y * verticalOffset,
+      right.z * lateralOffset +
+        up.z * verticalOffset,
     );
 
     const yaw =
