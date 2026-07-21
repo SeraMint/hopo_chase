@@ -2,8 +2,11 @@ import {
   Color3,
   Mesh,
   MeshBuilder,
+  PBRMaterial,
+  RawTexture,
   Scene,
   StandardMaterial,
+  Texture,
   TransformNode,
   Vector3,
 } from "@babylonjs/core";
@@ -96,7 +99,12 @@ export class MonsterController {
   /**
    * 피격 시 함께 점멸할 피부 재질들입니다.
    */
-  private readonly reactiveMaterials: StandardMaterial[] = [];
+  private readonly reactiveMaterials: PBRMaterial[] = [];
+  private readonly reactiveBaseEmissiveColors: Color3[] = [];
+  private monsterSkinNormalTexture!: RawTexture;
+  private hitFlashRemaining = 0;
+  private hitFlashDuration = 0;
+  private hitFlashColor = Color3.Black();
 
   /**
    * 달리기 애니메이션이 계산한 실제 도약 높이입니다.
@@ -217,6 +225,8 @@ export class MonsterController {
 
     this.modelRoot.parent = hitbox;
     this.modelRoot.position.y = -0.08;
+
+    this.monsterSkinNormalTexture = this.createMonsterSkinNormalTexture();
 
     const skinMaterial = this.createMonsterMaterial(
       "monster-skin-material",
@@ -613,7 +623,7 @@ export class MonsterController {
   private createRoughSkinDetails(
     parent: TransformNode,
     name: string,
-    material: StandardMaterial,
+    material: PBRMaterial,
     positions: readonly Vector3[],
     baseDiameter: number,
   ): void {
@@ -651,26 +661,73 @@ export class MonsterController {
     diffuseColor: Color3,
     emissiveColor: Color3,
     reactsToHit = false,
-  ): StandardMaterial {
-    const material = new StandardMaterial(name, this.scene);
+  ): PBRMaterial {
+    const material = new PBRMaterial(name, this.scene);
 
-    material.diffuseColor = diffuseColor;
+    material.albedoColor = diffuseColor;
 
     material.emissiveColor = emissiveColor;
 
-    material.specularColor = new Color3(0.016, 0.009, 0.007);
+    material.metallic = 0;
+    material.roughness = name.includes("eye") ? 0.28 : name.includes("claw") ? 0.7 : 0.93;
+    material.environmentIntensity = name.includes("eye") ? 0.8 : 0.48;
+    material.bumpTexture = this.monsterSkinNormalTexture;
+    material.bumpTexture.level = name.includes("skin") ? 0.72 : 0.38;
 
     /**
      * 젖은 플라스틱처럼 보이는 광택을 줄이고,
      * 거칠고 마른 피부에 가깝게 만듭니다.
      */
-    material.specularPower = 2;
-
     if (reactsToHit) {
       this.reactiveMaterials.push(material);
+      this.reactiveBaseEmissiveColors.push(emissiveColor.clone());
     }
 
     return material;
+  }
+
+  private createMonsterSkinNormalTexture(): RawTexture {
+    const size = 64;
+    const heights = new Float32Array(size * size);
+    const data = new Uint8Array(size * size * 4);
+
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const broadPores = Math.sin(x * 0.73) * Math.cos(y * 0.59) * 0.42;
+        const finePores = Math.sin(x * 2.17 + y * 1.41) * 0.18;
+        heights[y * size + x] = broadPores + finePores;
+      }
+    }
+
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const left = heights[y * size + ((x - 1 + size) % size)];
+        const right = heights[y * size + ((x + 1) % size)];
+        const top = heights[((y - 1 + size) % size) * size + x];
+        const bottom = heights[((y + 1) % size) * size + x];
+        const normal = new Vector3((left - right) * 1.7, (top - bottom) * 1.7, 1);
+        normal.normalize();
+        const index = (y * size + x) * 4;
+        data[index] = Math.round((normal.x * 0.5 + 0.5) * 255);
+        data[index + 1] = Math.round((normal.y * 0.5 + 0.5) * 255);
+        data[index + 2] = Math.round((normal.z * 0.5 + 0.5) * 255);
+        data[index + 3] = 255;
+      }
+    }
+
+    const texture = RawTexture.CreateRGBATexture(
+      data,
+      size,
+      size,
+      this.scene,
+      true,
+      false,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
+    texture.name = "monster-skin-normal-texture";
+    texture.uScale = 3.2;
+    texture.vScale = 3.2;
+    return texture;
   }
 
   private createCreatureLimb(
@@ -678,9 +735,9 @@ export class MonsterController {
     x: number,
     z: number,
     isFront: boolean,
-    skinMaterial: StandardMaterial,
-    dirtySkinMaterial: StandardMaterial,
-    clawMaterial: StandardMaterial,
+    skinMaterial: PBRMaterial,
+    dirtySkinMaterial: PBRMaterial,
+    clawMaterial: PBRMaterial,
   ): {
     upperJoint: TransformNode;
     lowerJoint: TransformNode;
@@ -798,6 +855,8 @@ export class MonsterController {
   }
 
   public update(deltaTime: number, elapsedTime: number): void {
+    this.updateHitFlash(deltaTime);
+
     const proximity = clamp(
       (this.config.startPosition.z - this.forwardDistance) /
         (this.config.startPosition.z - this.config.dangerDistance),
@@ -1827,7 +1886,7 @@ export class MonsterController {
 
     this.hitSquash = 0.16;
     this.startHitReaction(0.46, 0.72);
-
+    this.flashHitColor(new Color3(0.95, 0.075, 0.025), 95);
   }
 
   public applyGrenadeExplosion(
@@ -1888,24 +1947,21 @@ export class MonsterController {
   }
 
   private flashHitColor(color: Color3, duration = 90): void {
-    const originalColors = this.reactiveMaterials.map((material) =>
-      material.emissiveColor.clone(),
-    );
+    this.hitFlashDuration = Math.max(0.001, duration / 1000);
+    this.hitFlashRemaining = this.hitFlashDuration;
+    this.hitFlashColor.copyFrom(color);
+  }
 
-    this.reactiveMaterials.forEach((material) => {
-      material.emissiveColor = color.clone();
+  private updateHitFlash(deltaTime: number): void {
+    this.hitFlashRemaining = Math.max(0, this.hitFlashRemaining - deltaTime);
+    const intensity = this.hitFlashDuration > 0
+      ? smootherStep(this.hitFlashRemaining / this.hitFlashDuration)
+      : 0;
+
+    this.reactiveMaterials.forEach((material, index) => {
+      const baseColor = this.reactiveBaseEmissiveColors[index] ?? Color3.Black();
+      material.emissiveColor = Color3.Lerp(baseColor, this.hitFlashColor, intensity);
     });
-
-    window.setTimeout(() => {
-      if (this.mesh.isDisposed()) {
-        return;
-      }
-
-      this.reactiveMaterials.forEach((material, index) => {
-        material.emissiveColor =
-          originalColors[index]?.clone() ?? Color3.Black();
-      });
-    }, duration);
   }
 
   public setDifficulty(settings: MonsterDifficultySettings): void {
@@ -1938,6 +1994,9 @@ export class MonsterController {
     this.hitReactionElapsed = 0;
     this.hitReactionDuration = 0;
     this.hitReactionStrength = 0;
+    this.hitFlashRemaining = 0;
+    this.hitFlashDuration = 0;
+    this.updateHitFlash(0);
 
     this.currentDifficultyMultiplier =
       this.difficultySettings.approachSpeedMultiplier;

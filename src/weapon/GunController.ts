@@ -21,6 +21,7 @@ export interface GunControllerConfig {
 
 export class GunController {
   private readonly config: GunControllerConfig;
+  private magazineCapacity: number;
 
   private ammo: number;
   private cooldownRemaining = 0;
@@ -31,7 +32,8 @@ export class GunController {
     config: GunControllerConfig,
   ) {
     this.config = config;
-    this.ammo = config.magazineSize;
+    this.magazineCapacity = config.magazineSize;
+    this.ammo = this.magazineCapacity;
   }
 
   public update(
@@ -59,7 +61,7 @@ export class GunController {
       };
     }
 
-    this.ammo = this.config.magazineSize;
+    this.ammo = this.magazineCapacity;
     this.reloading = false;
     this.reloadRemainingTime = 0;
 
@@ -96,7 +98,7 @@ export class GunController {
 
     if (
       this.ammo >=
-      this.config.magazineSize
+      this.magazineCapacity
     ) {
       return "full";
     }
@@ -109,7 +111,7 @@ export class GunController {
   }
 
   public reset(): void {
-    this.ammo = this.config.magazineSize;
+    this.ammo = this.magazineCapacity;
     this.cooldownRemaining = 0;
     this.reloading = false;
     this.reloadRemainingTime = 0;
@@ -120,7 +122,12 @@ export class GunController {
   }
 
   public get magazineSize(): number {
-    return this.config.magazineSize;
+    return this.magazineCapacity;
+  }
+
+  public setMagazineSize(magazineSize: number): void {
+    this.magazineCapacity = Math.max(1, Math.floor(magazineSize));
+    this.ammo = Math.min(this.ammo, this.magazineCapacity);
   }
 
   public get shotCooldownRemaining(): number {

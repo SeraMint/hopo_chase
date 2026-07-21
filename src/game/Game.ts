@@ -1,15 +1,19 @@
 import {
   Color3,
   Color4,
+  DefaultRenderingPipeline,
+  DirectionalLight,
   Engine,
   HemisphericLight,
+  ImageProcessingConfiguration,
+  LinesMesh,
   Matrix,
   MeshBuilder,
+  PointLight,
   Scene,
-  StandardMaterial,
+  ShadowGenerator,
   UniversalCamera,
   Vector3,
-  type Mesh,
 } from "@babylonjs/core";
 
 import {
@@ -37,6 +41,14 @@ type GameState =
   | "playing"
   | "gameOver";
 
+type GraphicsQuality = "low" | "medium" | "high";
+
+interface BulletVisualPoolItem {
+  tracer: LinesMesh;
+  light: PointLight;
+  active: boolean;
+}
+
 export class Game {
   private readonly soundUrls = {
     rifleFire: rifleFireSoundUrl,
@@ -53,6 +65,7 @@ export class Game {
   private readonly engine: Engine;
   private readonly scene: Scene;
   private readonly camera: UniversalCamera;
+  private readonly bulletVisualPool: BulletVisualPoolItem[] = [];
 
   private readonly road: RoadController;
   private readonly monster: MonsterController;
@@ -60,6 +73,14 @@ export class Game {
   private readonly grenade: GrenadeLauncherController;
   private readonly score: ScoreController;
   private readonly hud: HudController;
+  private readonly renderingPipeline: DefaultRenderingPipeline;
+  private readonly graphicsQuality: GraphicsQuality;
+  private renderScale = 1;
+  private performanceSampleTime = 0;
+  private performanceSampleFrames = 0;
+  private lowPerformanceSamples = 0;
+  private recoveredPerformanceSamples = 0;
+  private postProcessingReduced = false;
 
   private state: GameState = "title";
 
@@ -78,22 +99,33 @@ export class Game {
   private pointerInsideCanvas = true;
   private scoreSubmitted = false;
   private scoreSubmitting = false;
+  private cameraShakeTrauma = 0;
+  private cameraShakeTime = 0;
 
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.graphicsQuality = this.detectGraphicsQuality();
 
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
       stencil: true,
     });
+    this.renderScale = this.graphicsQuality === "low"
+      ? 1.5
+      : this.graphicsQuality === "medium"
+        ? 1.2
+        : 1;
+    this.engine.setHardwareScalingLevel(this.renderScale);
 
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(
-      0.53,
-      0.78,
-      0.96,
+      0.48,
+      0.64,
+      0.72,
       1,
     );
+
+    this.configureAtmosphere();
 
     this.camera = this.createCamera();
     this.createLighting();
@@ -101,6 +133,7 @@ export class Game {
     this.road = new RoadController(
       this.scene,
       GAME_CONFIG.road,
+      this.graphicsQuality,
     );
 
     this.road.updateCamera(
@@ -115,11 +148,14 @@ export class Game {
       this.road,
     );
 
-    this.applySelectedDifficulty();
+    this.createShadows();
+    this.renderingPipeline = this.createPostProcessing();
 
     this.gun = new GunController(
       GAME_CONFIG.gun,
     );
+
+    this.applySelectedDifficulty();
 
     this.grenade =
       new GrenadeLauncherController(
@@ -127,6 +163,7 @@ export class Game {
         this.camera,
         GAME_CONFIG.grenade,
         this.road,
+        this.graphicsQuality,
       );
 
     const localLeaderboardRepository =
@@ -256,6 +293,21 @@ export class Game {
     return camera;
   }
 
+  private detectGraphicsQuality(): GraphicsQuality {
+    const cores = navigator.hardwareConcurrency ?? 4;
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+
+    if (cores <= 4 || memory <= 4) {
+      return "low";
+    }
+
+    if (cores >= 8 && memory >= 8) {
+      return "high";
+    }
+
+    return "medium";
+  }
+
   private createLighting(): void {
     const light = new HemisphericLight(
       "hemispheric-light",
@@ -263,12 +315,151 @@ export class Game {
       this.scene,
     );
 
-    light.intensity = 1.45;
+    light.intensity = 0.72;
     light.groundColor = new Color3(
-      0.42,
-      0.52,
-      0.38,
+      0.22,
+      0.27,
+      0.2,
     );
+
+    const sunlight = new DirectionalLight(
+      "sun-light",
+      new Vector3(-0.38, -0.82, 0.42),
+      this.scene,
+    );
+
+    sunlight.position = new Vector3(35, 55, -45);
+    sunlight.intensity = 2.35;
+    sunlight.diffuse = new Color3(1, 0.88, 0.69);
+    sunlight.specular = new Color3(1, 0.92, 0.8);
+  }
+
+  private configureAtmosphere(): void {
+    this.scene.fogMode = Scene.FOGMODE_EXP2;
+    this.scene.fogDensity = 0.0065;
+    this.scene.fogColor = new Color3(0.48, 0.61, 0.66);
+
+    const imageProcessing = this.scene.imageProcessingConfiguration;
+    imageProcessing.toneMappingEnabled = true;
+    imageProcessing.toneMappingType =
+      ImageProcessingConfiguration.TONEMAPPING_ACES;
+    imageProcessing.exposure = 1.08;
+    imageProcessing.contrast = 1.16;
+  }
+
+  private createShadows(): void {
+    const sunlight = this.scene.getLightByName("sun-light");
+
+    if (!(sunlight instanceof DirectionalLight)) {
+      return;
+    }
+
+    const shadowMapSize = this.graphicsQuality === "high"
+      ? 1024
+      : this.graphicsQuality === "medium"
+        ? 768
+        : 512;
+    const shadows = new ShadowGenerator(shadowMapSize, sunlight, true);
+
+    if (this.graphicsQuality === "low") {
+      shadows.usePoissonSampling = true;
+    } else {
+      shadows.useBlurExponentialShadowMap = true;
+      shadows.blurKernel = this.graphicsQuality === "high" ? 12 : 8;
+    }
+
+    shadows.bias = 0.0005;
+    shadows.normalBias = 0.025;
+    shadows.darkness = 0.3;
+    shadows.frustumEdgeFalloff = 0.18;
+
+    shadows.addShadowCaster(this.monster.mesh, true);
+
+    for (const mesh of this.road.getVehicleMeshes()) {
+      if (
+        mesh.name.includes("tail-light") ||
+        mesh.name.includes("rear-window")
+      ) {
+        continue;
+      }
+
+      shadows.addShadowCaster(mesh);
+    }
+  }
+
+  private createPostProcessing(): DefaultRenderingPipeline {
+    const pipeline = new DefaultRenderingPipeline(
+      "cinematic-rendering-pipeline",
+      true,
+      this.scene,
+      [this.camera],
+    );
+
+    pipeline.samples = this.graphicsQuality === "high" ? 2 : 1;
+    pipeline.fxaaEnabled = true;
+    pipeline.bloomEnabled = this.graphicsQuality !== "low";
+    pipeline.bloomThreshold = 0.88;
+    pipeline.bloomWeight = 0.12;
+    pipeline.bloomKernel = 48;
+    pipeline.sharpenEnabled = true;
+    pipeline.sharpen.edgeAmount = 0.18;
+
+    return pipeline;
+  }
+
+  private updateDynamicResolution(deltaTime: number): void {
+    this.performanceSampleTime += deltaTime;
+    this.performanceSampleFrames += 1;
+
+    if (this.performanceSampleTime < 2) {
+      return;
+    }
+
+    const fps = this.performanceSampleFrames / this.performanceSampleTime;
+    const minimumScale = this.graphicsQuality === "high" ? 1 : 1.15;
+    const maximumScale = this.graphicsQuality === "low" ? 1.85 : 1.65;
+    let nextScale = this.renderScale;
+
+    if (fps < 48) {
+      nextScale = Math.min(maximumScale, this.renderScale + 0.1);
+    } else if (fps > 57) {
+      nextScale = Math.max(minimumScale, this.renderScale - 0.05);
+    }
+
+    if (Math.abs(nextScale - this.renderScale) >= 0.049) {
+      this.renderScale = nextScale;
+      this.engine.setHardwareScalingLevel(this.renderScale);
+      this.engine.resize();
+    }
+
+    if (fps < 46) {
+      this.lowPerformanceSamples += 1;
+      this.recoveredPerformanceSamples = 0;
+    } else if (fps > 56) {
+      this.recoveredPerformanceSamples += 1;
+      this.lowPerformanceSamples = 0;
+    } else {
+      this.lowPerformanceSamples = 0;
+      this.recoveredPerformanceSamples = 0;
+    }
+
+    if (!this.postProcessingReduced && this.lowPerformanceSamples >= 2) {
+      this.renderingPipeline.bloomEnabled = false;
+      this.renderingPipeline.sharpenEnabled = false;
+      this.postProcessingReduced = true;
+      this.lowPerformanceSamples = 0;
+    } else if (
+      this.postProcessingReduced &&
+      this.recoveredPerformanceSamples >= 3
+    ) {
+      this.renderingPipeline.bloomEnabled = this.graphicsQuality !== "low";
+      this.renderingPipeline.sharpenEnabled = true;
+      this.postProcessingReduced = false;
+      this.recoveredPerformanceSamples = 0;
+    }
+
+    this.performanceSampleTime = 0;
+    this.performanceSampleFrames = 0;
   }
 
   private registerUiEvents(): void {
@@ -593,15 +784,6 @@ export class Game {
       pickResult.pickedMesh ===
         this.monster.mesh
     ) {
-      if (pickResult.pickedPoint) {
-        this.spawnBloodEffect(
-          pickResult.pickedPoint,
-          pickResult.pickedPoint
-            .subtract(this.camera.globalPosition)
-            .normalize(),
-        );
-      }
-
       this.monster.applyBulletHit();
       this.registerMonsterHit(
         "명중! 몬스터가 뒤로 밀려납니다.",
@@ -633,20 +815,24 @@ export class Game {
     const target =
       hitPoint ?? ray.origin.add(ray.direction.scale(120));
 
+    const visual = this.acquireBulletVisual();
     const tracer = MeshBuilder.CreateLines(
       "bullet-tracer",
       {
-        points: [
-          origin,
-          Vector3.Lerp(origin, target, 0.92),
-        ],
+        points: [origin, Vector3.Lerp(origin, target, 0.92)],
+        instance: visual.tracer,
       },
       this.scene,
     );
+    const flashLight = visual.light;
 
-    tracer.color = new Color3(1, 0.72, 0.18);
     tracer.alpha = 0.95;
-    tracer.isPickable = false;
+    tracer.setEnabled(true);
+    flashLight.position.copyFrom(origin);
+    flashLight.intensity = 8;
+    flashLight.setEnabled(true);
+
+    this.addCameraShake(0.065);
 
     let elapsed = 0;
     const lifetime = 0.09;
@@ -657,90 +843,61 @@ export class Game {
       const progress = Math.min(elapsed / lifetime, 1);
 
       tracer.alpha = 1 - progress;
+      flashLight.intensity = 8 * Math.max(0, 1 - progress * 3.5);
 
       if (progress < 1) {
         return;
       }
 
       this.scene.onBeforeRenderObservable.remove(observer);
-      tracer.dispose();
+      tracer.setEnabled(false);
+      flashLight.setEnabled(false);
+      visual.active = false;
     });
   }
 
-  private spawnBloodEffect(
-    position: Vector3,
-    shotDirection: Vector3,
-  ): void {
-    const bloodMaterial = new StandardMaterial(
-      "monster-blood-material",
-      this.scene,
-    );
+  private acquireBulletVisual(): BulletVisualPoolItem {
+    const available = this.bulletVisualPool.find((visual) => !visual.active);
 
-    bloodMaterial.diffuseColor = new Color3(0.13, 0.003, 0.002);
-    bloodMaterial.emissiveColor = Color3.Black();
-    bloodMaterial.specularColor = Color3.Black();
-
-    const droplets: {
-      mesh: Mesh;
-      velocity: Vector3;
-    }[] = [];
-
-    for (let index = 0; index < 5; index += 1) {
-      const droplet = MeshBuilder.CreateSphere(
-        `monster-blood-drop-${index}`,
-        {
-          diameter: 0.022 + (index % 3) * 0.006,
-          segments: 4,
-        },
-        this.scene,
-      );
-
-      droplet.position.copyFrom(position);
-      droplet.scaling.set(0.72, 1.45, 0.72);
-      droplet.material = bloodMaterial;
-      droplet.isPickable = false;
-
-      const velocity = shotDirection
-        .scale(0.18)
-        .add(
-          new Vector3(
-            (Math.random() - 0.5) * 0.9,
-            0.18 + Math.random() * 0.75,
-            (Math.random() - 0.5) * 0.9,
-          ),
-        )
-        .scale(0.8 + Math.random() * 0.65);
-
-      droplets.push({
-        mesh: droplet,
-        velocity,
-      });
+    if (available) {
+      available.active = true;
+      return available;
     }
 
-    let elapsed = 0;
-    const lifetime = 0.2;
+    const tracer = MeshBuilder.CreateLines(
+      "bullet-tracer-pooled",
+      { points: [Vector3.Zero(), Vector3.Zero()], updatable: true },
+      this.scene,
+    );
+    tracer.color = new Color3(1, 0.72, 0.18);
+    tracer.isPickable = false;
+    tracer.setEnabled(false);
 
-    const observer = this.scene.onBeforeRenderObservable.add(() => {
-      const deltaTime = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+    const light = new PointLight("muzzle-flash-light-pooled", Vector3.Zero(), this.scene);
+    light.diffuse = new Color3(1, 0.36, 0.06);
+    light.range = 7;
+    light.setEnabled(false);
 
-      elapsed += deltaTime;
+    const visual = { tracer, light, active: true };
+    this.bulletVisualPool.push(visual);
+    return visual;
+  }
 
-      droplets.forEach((droplet) => {
-        droplet.velocity.y -= 4.4 * deltaTime;
-        droplet.mesh.position.addInPlace(
-          droplet.velocity.scale(deltaTime),
-        );
-        droplet.mesh.visibility = Math.max(0, 1 - elapsed / lifetime);
-      });
+  private addCameraShake(amount: number): void {
+    this.cameraShakeTrauma = Math.min(1, this.cameraShakeTrauma + amount);
+  }
 
-      if (elapsed < lifetime) {
-        return;
-      }
+  private updateCameraShake(deltaTime: number): void {
+    if (this.cameraShakeTrauma <= 0) {
+      return;
+    }
 
-      this.scene.onBeforeRenderObservable.remove(observer);
-      droplets.forEach((droplet) => droplet.mesh.dispose());
-      bloodMaterial.dispose();
-    });
+    this.cameraShakeTime += deltaTime;
+    const strength = this.cameraShakeTrauma * this.cameraShakeTrauma;
+    this.camera.rotation.x += Math.sin(this.cameraShakeTime * 38) * strength * 0.022;
+    this.camera.rotation.y += Math.sin(this.cameraShakeTime * 31 + 1.7) * strength * 0.028;
+    this.camera.rotation.z += Math.sin(this.cameraShakeTime * 43 + 0.8) * strength * 0.018;
+    this.cameraShakeTrauma = Math.max(0, this.cameraShakeTrauma - deltaTime * 1.45);
   }
 
   private registerMonsterHit(
@@ -891,6 +1048,7 @@ export class Game {
     }
 
     this.elapsedTime += deltaTime;
+    this.updateDynamicResolution(deltaTime);
     this.score.update(deltaTime);
 
     const gunUpdate = this.gun.update(deltaTime);
@@ -920,6 +1078,11 @@ export class Game {
       of grenadeUpdate.explosions
     ) {
       this.playSound(this.soundUrls.grenadeExplosion);
+      const explosionDistance = Vector3.Distance(
+        explosion.position,
+        this.camera.globalPosition,
+      );
+      this.addCameraShake(Math.max(0.16, 0.92 - explosionDistance / 95));
 
       const hit =
         this.monster.applyGrenadeExplosion(
@@ -939,6 +1102,8 @@ export class Game {
         );
       }
     }
+
+    this.updateCameraShake(deltaTime);
 
     if (this.monster.hasCaughtVehicle) {
       this.endGame();
@@ -1038,10 +1203,16 @@ export class Game {
         difficulty
           .maximumTimeSpeedMultiplier,
     });
+
+    this.gun.setMagazineSize(
+      difficulty.magazineSize,
+    );
   }
 
   private returnToTitle(): void {
     this.state = "title";
+    this.cameraShakeTrauma = 0;
+    this.cameraShakeTime = 0;
 
     this.grenade.cancelAim();
     this.releaseGrenadePointerCapture();
@@ -1080,6 +1251,8 @@ export class Game {
 
   private startRun(): void {
     this.startBackgroundMusic();
+    this.cameraShakeTrauma = 0;
+    this.cameraShakeTime = 0;
 
     this.selectedDifficulty =
       this.hud.getSelectedDifficulty();

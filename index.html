@@ -2,11 +2,9 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hopo Chase</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
 
   <body>
@@ -35,13 +33,12 @@
           <strong id="nearest-distance">-</strong>
         </div>
 
-        <div id="status-message">
-          게임 시작 버튼을 눌러주세요.
-        </div>
+        <div id="status-message">게임 시작 버튼을 눌러주세요.</div>
       </section>
 
       <div id="help">
-        마우스 이동: 조준 · 왼쪽 클릭: 사격 · 우클릭: 재장전 · 휠 버튼 홀드/이동/릴리스: 유탄
+        마우스 이동: 조준 · 왼쪽 클릭: 사격 · 우클릭: 재장전 · 휠 버튼
+        홀드/이동/릴리스: 유탄
       </div>
 
       <section id="title-screen" aria-labelledby="game-title">
@@ -50,8 +47,8 @@
           <h1 id="game-title">HOPO CHASE</h1>
 
           <p class="title-screen__description">
-            달리는 차량을 뒤쫓는 괴물을 밀어내며 최대한 멀리 생존하세요.
-            시간이 지날수록 괴물은 더 빨라집니다.
+            달리는 차량을 뒤쫓는 괴물을 밀어내며 최대한 멀리 생존하세요. 시간이
+            지날수록 괴물은 더 빨라집니다.
           </p>
 
           <section
@@ -66,57 +63,29 @@
               aria-label="게임 난이도"
             >
               <label class="difficulty-check">
-                <input
-                  type="radio"
-                  name="difficulty"
-                  value="easy"
-                />
-                <span
-                  class="difficulty-check__radio"
-                  aria-hidden="true"
-                ></span>
+                <input type="radio" name="difficulty" value="easy" />
+                <span class="difficulty-check__radio" aria-hidden="true"></span>
                 <span>쉬움</span>
               </label>
 
               <label class="difficulty-check">
-                <input
-                  type="radio"
-                  name="difficulty"
-                  value="normal"
-                  checked
-                />
-                <span
-                  class="difficulty-check__radio"
-                  aria-hidden="true"
-                ></span>
+                <input type="radio" name="difficulty" value="normal" checked />
+                <span class="difficulty-check__radio" aria-hidden="true"></span>
                 <span>보통</span>
               </label>
 
               <label class="difficulty-check">
-                <input
-                  type="radio"
-                  name="difficulty"
-                  value="hard"
-                />
-                <span
-                  class="difficulty-check__radio"
-                  aria-hidden="true"
-                ></span>
+                <input type="radio" name="difficulty" value="hard" />
+                <span class="difficulty-check__radio" aria-hidden="true"></span>
                 <span>어려움</span>
               </label>
             </div>
           </section>
 
-          <section
-            class="title-screen__guide"
-            aria-labelledby="guide-title"
-          >
+          <section class="title-screen__guide" aria-labelledby="guide-title">
             <h2 id="guide-title">이용 방법</h2>
 
-            <div
-              class="title-screen__controls"
-              aria-label="게임 조작법"
-            >
+            <div class="title-screen__controls" aria-label="게임 조작법">
               <div>
                 <strong>왼쪽 클릭</strong>
                 <span>일반탄 사격</span>
@@ -141,12 +110,11 @@
           </section>
 
           <p class="title-screen__reward">
-            일반탄과 유탄 명중을 합산해 10회 타격할 때마다 유탄 1발을 획득합니다.
+            일반탄과 유탄 명중을 합산해 10회 타격할 때마다 유탄 1발을
+            획득합니다.
           </p>
 
-          <button id="start-button" type="button">
-            게임 시작
-          </button>
+          <button id="start-button" type="button">게임 시작</button>
         </div>
       </section>
 
@@ -155,10 +123,7 @@
           <h1>GAME OVER</h1>
           <p>괴물이 차량을 따라잡았습니다.</p>
 
-          <section
-            class="final-score"
-            aria-label="최종 기록"
-          >
+          <section class="final-score" aria-label="최종 기록">
             <div>
               <span>주행 거리</span>
               <strong id="final-distance">0 m</strong>
@@ -181,9 +146,7 @@
           </section>
 
           <section class="score-registration">
-            <label for="player-name">
-              스코어보드 이름
-            </label>
+            <label for="player-name"> 스코어보드 이름 </label>
 
             <div class="score-registration__controls">
               <input
@@ -194,18 +157,10 @@
                 placeholder="PLAYER"
               />
 
-              <button
-                id="submit-score-button"
-                type="button"
-              >
-                기록 등록
-              </button>
+              <button id="submit-score-button" type="button">기록 등록</button>
             </div>
 
-            <div
-              id="score-feedback"
-              aria-live="polite"
-            ></div>
+            <div id="score-feedback" aria-live="polite"></div>
           </section>
 
           <section class="leaderboard">
@@ -227,9 +182,7 @@
             </div>
           </section>
 
-          <button id="restart-button" type="button">
-            타이틀로 돌아가기
-          </button>
+          <button id="restart-button" type="button">타이틀로 돌아가기</button>
         </div>
       </div>
     </main>

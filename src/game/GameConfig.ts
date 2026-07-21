@@ -3,6 +3,7 @@ export type DifficultyId = "easy" | "normal" | "hard";
 export interface DifficultyDefinition {
   label: string;
   description: string;
+  magazineSize: number;
 
   /**
    * 기본 접근 속도에 곱해지는 배율입니다.
@@ -27,6 +28,7 @@ export const GAME_CONFIG = {
     easy: {
       label: "쉬움",
       description: "느린 초기 속도와 완만한 난이도 상승",
+      magazineSize: 30,
       approachSpeedMultiplier: 0.78,
       speedIncreaseMultiplier: 0.6,
       maximumTimeSpeedMultiplier: 1.45,
@@ -35,6 +37,7 @@ export const GAME_CONFIG = {
     normal: {
       label: "보통",
       description: "기존 게임과 동일한 표준 밸런스",
+      magazineSize: 20,
       approachSpeedMultiplier: 1,
       speedIncreaseMultiplier: 1,
       maximumTimeSpeedMultiplier: 1.8,
@@ -43,6 +46,7 @@ export const GAME_CONFIG = {
     hard: {
       label: "어려움",
       description: "빠른 접근과 강한 시간 가속",
+      magazineSize: 10,
       approachSpeedMultiplier: 1.18,
       speedIncreaseMultiplier: 1.35,
       maximumTimeSpeedMultiplier: 2.15,
