@@ -151,6 +151,8 @@ export class RoadController {
   private readonly vehicleSample = createRoadSample();
   private readonly cameraPositionSample = createRoadSample();
   private readonly cameraTargetSample = createRoadSample();
+  private readonly nearestSearchSample = createRoadSample();
+  private readonly groundHeightSample = createRoadSample();
 
   private progress = 0;
 
@@ -1321,6 +1323,7 @@ export class RoadController {
    */
   public getNearestSample(
     worldPosition: Vector3,
+    result?: RoadSample,
   ): RoadSample {
     let distanceAhead =
       clamp(
@@ -1343,6 +1346,9 @@ export class RoadController {
       const sample =
         this.sample(
           distanceAhead,
+          0,
+          0,
+          this.nearestSearchSample,
         );
 
       const errorX =
@@ -1392,6 +1398,9 @@ export class RoadController {
 
     return this.sample(
       distanceAhead,
+      0,
+      0,
+      result,
     );
   }
 
@@ -1401,6 +1410,7 @@ export class RoadController {
     return (
       this.getNearestSample(
         worldPosition,
+        this.groundHeightSample,
       ).position.y +
       this.config.roadThickness *
         0.55
