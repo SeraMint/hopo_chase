@@ -133,6 +133,8 @@ export class GrenadeLauncherController {
   private readonly launchOrigin:
     Vector3;
 
+  private readonly identityMatrix = Matrix.Identity();
+
   private readonly guidePoints:
     Vector3[];
 
@@ -639,7 +641,7 @@ export class GrenadeLauncherController {
     const ray = this.scene.createPickingRay(
       this.pointerX,
       this.pointerY,
-      Matrix.Identity(),
+      this.identityMatrix,
       this.camera,
     );
 

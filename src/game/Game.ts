@@ -45,6 +45,7 @@ type GraphicsQuality = "low" | "medium" | "high";
 
 interface BulletVisualPoolItem {
   tracer: LinesMesh;
+  points: [Vector3, Vector3];
   active: boolean;
 }
 
@@ -65,6 +66,7 @@ export class Game {
   private readonly scene: Scene;
   private readonly camera: UniversalCamera;
   private readonly muzzleFlashLight: PointLight;
+  private readonly identityMatrix = Matrix.Identity();
   private readonly bulletVisualPool: BulletVisualPoolItem[] = [];
 
   private readonly road: RoadController;
@@ -899,19 +901,34 @@ export class Game {
     const ray = this.scene.createPickingRay(
       this.scene.pointerX,
       this.scene.pointerY,
-      Matrix.Identity(),
+      this.identityMatrix,
       this.camera,
     );
 
-    const origin = ray.origin.add(ray.direction.scale(0.8));
-    const target =
-      hitPoint ?? ray.origin.add(ray.direction.scale(120));
-
     const visual = this.acquireBulletVisual();
+    const [origin, tracerEnd] = visual.points;
+    origin.copyFrom(ray.origin);
+    origin.addInPlaceFromFloats(
+      ray.direction.x * 0.8,
+      ray.direction.y * 0.8,
+      ray.direction.z * 0.8,
+    );
+
+    if (hitPoint) {
+      Vector3.LerpToRef(origin, hitPoint, 0.92, tracerEnd);
+    } else {
+      tracerEnd.set(
+        ray.origin.x + ray.direction.x * 120,
+        ray.origin.y + ray.direction.y * 120,
+        ray.origin.z + ray.direction.z * 120,
+      );
+      Vector3.LerpToRef(origin, tracerEnd, 0.92, tracerEnd);
+    }
+
     const tracer = MeshBuilder.CreateLines(
       "bullet-tracer",
       {
-        points: [origin, Vector3.Lerp(origin, target, 0.92)],
+        points: visual.points,
         instance: visual.tracer,
       },
       this.scene,
@@ -954,16 +971,20 @@ export class Game {
       return available;
     }
 
+    const points: [Vector3, Vector3] = [
+      Vector3.Zero(),
+      Vector3.Zero(),
+    ];
     const tracer = MeshBuilder.CreateLines(
       "bullet-tracer-pooled",
-      { points: [Vector3.Zero(), Vector3.Zero()], updatable: true },
+      { points, updatable: true },
       this.scene,
     );
     tracer.color = new Color3(1, 0.72, 0.18);
     tracer.isPickable = false;
     tracer.setEnabled(false);
 
-    const visual = { tracer, active: true };
+    const visual = { tracer, points, active: true };
     this.bulletVisualPool.push(visual);
     return visual;
   }
