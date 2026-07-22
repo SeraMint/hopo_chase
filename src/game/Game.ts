@@ -142,11 +142,7 @@ export class Game {
       preserveDrawingBuffer: false,
       stencil: true,
     });
-    this.renderScale = this.graphicsQuality === "low"
-      ? 1.5
-      : this.graphicsQuality === "medium"
-        ? 1.2
-        : 1;
+    this.renderScale = this.getInitialRenderScale();
     this.engine.setHardwareScalingLevel(this.renderScale);
 
     this.scene = new Scene(this.engine);
@@ -434,10 +430,27 @@ export class Game {
     }
 
     if (cores >= 8 && memory >= 8) {
+      // 터치 기기는 발열과 배터리 소모를 고려해 중간 품질을 상한으로 둡니다.
+      if (this.isTouchDevice) {
+        return "medium";
+      }
+
       return "high";
     }
 
     return "medium";
+  }
+
+  private getInitialRenderScale(): number {
+    if (this.isTouchDevice) {
+      return this.graphicsQuality === "low" ? 1.6 : 1.35;
+    }
+
+    return this.graphicsQuality === "low"
+      ? 1.5
+      : this.graphicsQuality === "medium"
+        ? 1.2
+        : 1;
   }
 
   private createLighting(): void {
@@ -486,7 +499,9 @@ export class Game {
       return;
     }
 
-    const shadowMapSize = this.graphicsQuality === "high"
+    const shadowMapSize = this.isTouchDevice
+      ? 512
+      : this.graphicsQuality === "high"
       ? 1024
       : this.graphicsQuality === "medium"
         ? 768
@@ -548,13 +563,17 @@ export class Game {
       [this.camera],
     );
 
-    pipeline.samples = this.graphicsQuality === "high" ? 2 : 1;
+    const useCinematicPostProcessing = !this.isTouchDevice;
+
+    pipeline.samples =
+      !this.isTouchDevice && this.graphicsQuality === "high" ? 2 : 1;
     pipeline.fxaaEnabled = true;
-    pipeline.bloomEnabled = this.graphicsQuality !== "low";
+    pipeline.bloomEnabled =
+      useCinematicPostProcessing && this.graphicsQuality !== "low";
     pipeline.bloomThreshold = 0.88;
     pipeline.bloomWeight = 0.12;
     pipeline.bloomKernel = 48;
-    pipeline.sharpenEnabled = true;
+    pipeline.sharpenEnabled = useCinematicPostProcessing;
     pipeline.sharpen.edgeAmount = 0.18;
 
     return pipeline;
@@ -569,8 +588,12 @@ export class Game {
     }
 
     const fps = this.performanceSampleFrames / this.performanceSampleTime;
-    const minimumScale = this.graphicsQuality === "high" ? 1 : 1.15;
-    const maximumScale = this.graphicsQuality === "low" ? 1.85 : 1.65;
+    const minimumScale = this.isTouchDevice
+      ? this.graphicsQuality === "low" ? 1.45 : 1.25
+      : this.graphicsQuality === "high" ? 1 : 1.15;
+    const maximumScale = this.isTouchDevice
+      ? 2
+      : this.graphicsQuality === "low" ? 1.85 : 1.65;
     let nextScale = this.renderScale;
 
     if (fps < 48) {
@@ -596,12 +619,17 @@ export class Game {
       this.recoveredPerformanceSamples = 0;
     }
 
-    if (!this.postProcessingReduced && this.lowPerformanceSamples >= 2) {
+    if (
+      !this.isTouchDevice &&
+      !this.postProcessingReduced &&
+      this.lowPerformanceSamples >= 2
+    ) {
       this.renderingPipeline.bloomEnabled = false;
       this.renderingPipeline.sharpenEnabled = false;
       this.postProcessingReduced = true;
       this.lowPerformanceSamples = 0;
     } else if (
+      !this.isTouchDevice &&
       this.postProcessingReduced &&
       this.recoveredPerformanceSamples >= 3
     ) {
