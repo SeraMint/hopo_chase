@@ -26,6 +26,7 @@ import { GrenadeLauncherController } from "../weapon/GrenadeLauncherController";
 import { RoadController } from "../world/RoadController";
 import { HudController } from "../ui/HudController";
 import {
+  getScoreDifficultyId,
   LocalStorageLeaderboardRepository,
   SupabaseLeaderboardRepository,
 } from "../score/LeaderboardRepository";
@@ -120,6 +121,7 @@ export class Game {
   private cameraShakeTime = 0;
   private muzzleFlashRemaining = 0;
   private resourcesReady = false;
+  private gameOverSequence = 0;
 
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -977,6 +979,25 @@ export class Game {
       () => this.engine.resize(),
     );
 
+    if (this.isTouchDevice) {
+      const resizeForMobileViewport =
+        (): void => {
+          requestAnimationFrame(() => {
+            this.engine.resize();
+          });
+        };
+
+      window.addEventListener(
+        "orientationchange",
+        resizeForMobileViewport,
+      );
+
+      window.visualViewport?.addEventListener(
+        "resize",
+        resizeForMobileViewport,
+      );
+    }
+
     window.addEventListener(
       "blur",
       () => {
@@ -1476,6 +1497,59 @@ export class Game {
     this.hud.renderLeaderboard(entries);
   }
 
+  private async prepareGameOverLeaderboard(
+    sequence: number,
+  ): Promise<void> {
+    const difficulty = this.selectedDifficulty;
+    const distance = Math.floor(this.score.distance);
+    const survivalTime = Number(this.score.time.toFixed(2));
+
+    try {
+      const entries = await this.score.getLeaderboard();
+
+      if (
+        sequence !== this.gameOverSequence ||
+        this.state !== "gameOver"
+      ) {
+        return;
+      }
+
+      this.hud.renderLeaderboard(entries);
+
+      const difficultyEntries = entries.filter(
+        (entry) => getScoreDifficultyId(entry) === difficulty,
+      );
+      const fifthEntry =
+        difficultyEntries[GAME_CONFIG.scoring.leaderboardSize - 1];
+      const canEnterTopFive =
+        !fifthEntry ||
+        distance > fifthEntry.distance ||
+        (
+          distance === fifthEntry.distance &&
+          survivalTime > fifthEntry.survivalTime
+        );
+
+      this.hud.setScoreRegistrationVisible(canEnterTopFive);
+
+      if (canEnterTopFive) {
+        this.hud.resetScoreRegistration();
+        this.hud.focusPlayerName();
+      }
+    } catch (error) {
+      console.error("Failed to prepare leaderboard registration", error);
+
+      if (
+        sequence === this.gameOverSequence &&
+        this.state === "gameOver"
+      ) {
+        // 조회 장애 때문에 정상 기록 등록까지 막지는 않습니다.
+        this.hud.setScoreRegistrationVisible(true);
+        this.hud.resetScoreRegistration();
+        this.hud.focusPlayerName();
+      }
+    }
+  }
+
   private showTemporaryStatus(
     message: string,
   ): void {
@@ -1623,6 +1697,7 @@ export class Game {
     }
 
     this.clearMobilePointerState();
+    const gameOverSequence = ++this.gameOverSequence;
     this.state = "gameOver";
     this.grenade.cancelAim();
     this.releaseGrenadePointerCapture();
@@ -1639,12 +1714,10 @@ export class Game {
         this.currentDifficulty.label,
     });
 
-    void this.refreshLeaderboard();
-
-    this.hud.resetScoreRegistration();
+    this.hud.setScoreRegistrationVisible(false);
     this.hud.setGameOverVisible(true);
     this.hud.setCrosshairVisible(false);
-    this.hud.focusPlayerName();
+    void this.prepareGameOverLeaderboard(gameOverSequence);
     this.updateHud();
   }
 
@@ -1679,6 +1752,7 @@ export class Game {
   }
 
   private returnToTitle(): void {
+    this.gameOverSequence += 1;
     this.clearMobilePointerState();
     this.state = "title";
     this.cameraShakeTrauma = 0;
@@ -1725,6 +1799,7 @@ export class Game {
     }
 
     this.clearMobilePointerState();
+    this.gameOverSequence += 1;
     this.startBackgroundMusic();
     this.cameraShakeTrauma = 0;
     this.cameraShakeTime = 0;

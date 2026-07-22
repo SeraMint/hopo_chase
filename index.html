@@ -2,7 +2,10 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>Hopo Chase</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
@@ -54,7 +57,10 @@
             aria-label="수류탄 조준 및 발사"
           >
             <span aria-hidden="true">G</span>
-            <small>수류탄</small>
+            <small>
+              수류탄
+              <b id="mobile-grenade-ammo">0</b>
+            </small>
           </button>
 
           <button
@@ -75,7 +81,10 @@
           aria-label="소총 발사"
         >
           <span aria-hidden="true">●</span>
-          <small>발사</small>
+          <small>
+            발사
+            <b id="mobile-fire-ammo">0</b>
+          </small>
         </button>
       </div>
 

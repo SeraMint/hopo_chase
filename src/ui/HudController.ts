@@ -149,6 +149,16 @@ export class HudController {
       "#mobile-reload-button",
     );
 
+  private readonly mobileFireAmmoElement =
+    getElement<HTMLElement>(
+      "#mobile-fire-ammo",
+    );
+
+  private readonly mobileGrenadeAmmoElement =
+    getElement<HTMLElement>(
+      "#mobile-grenade-ammo",
+    );
+
   private readonly helpElement =
     document.querySelector<HTMLElement>(
       "#help",
@@ -172,6 +182,11 @@ export class HudController {
   public readonly playerNameInput =
     getElement<HTMLInputElement>(
       "#player-name",
+    );
+
+  private readonly scoreRegistrationElement =
+    getElement<HTMLElement>(
+      ".score-registration",
     );
 
   private readonly finalDistanceElement =
@@ -509,6 +524,8 @@ export class HudController {
       document.createElement("strong");
 
     value.id = id;
+    row.className = "hud-value-row";
+    row.dataset.hudValue = id;
 
     row.append(
       document.createTextNode(
@@ -844,6 +861,14 @@ export class HudController {
       `${view.currentAmmo} / ${view.magazineSize}`,
     );
     this.setText(
+      this.mobileFireAmmoElement,
+      String(view.currentAmmo),
+    );
+    this.setText(
+      this.mobileGrenadeAmmoElement,
+      String(view.grenadeAmmo),
+    );
+    this.setText(
       this.travelledDistanceElement,
       `${Math.floor(view.distanceTravelled).toLocaleString()} m`,
     );
@@ -910,6 +935,37 @@ export class HudController {
       this.crosshair,
       "crosshair--grenade-aiming",
       view.isGrenadeAiming,
+    );
+
+    this.toggleClass(
+      this.mobileFireButton,
+      "mobile-control-button--empty",
+      view.needsReload,
+    );
+
+    this.toggleClass(
+      this.mobileFireButton,
+      "mobile-control-button--busy",
+      view.isReloading ||
+        view.shotCooldownRemaining > 0,
+    );
+
+    this.toggleClass(
+      this.mobileReloadButton,
+      "mobile-control-button--active",
+      view.isReloading,
+    );
+
+    this.toggleClass(
+      this.mobileGrenadeButton,
+      "mobile-control-button--empty",
+      view.grenadeAmmo <= 0,
+    );
+
+    this.toggleClass(
+      this.mobileGrenadeButton,
+      "mobile-control-button--busy",
+      view.grenadeCooldownRemaining > 0,
     );
 
     this.setHidden(
@@ -1340,6 +1396,12 @@ export class HudController {
 
     this.scoreFeedbackElement.textContent =
       "";
+  }
+
+  public setScoreRegistrationVisible(
+    visible: boolean,
+  ): void {
+    this.scoreRegistrationElement.hidden = !visible;
   }
 
   public markScoreSubmitted(
