@@ -3,6 +3,8 @@ import type { User } from "@supabase/supabase-js";
 import type { DifficultyId } from "../game/GameConfig";
 import { supabase } from "../lib/supabase";
 
+const LEADERBOARD_REQUEST_TIMEOUT_MS = 4_000;
+
 export interface ScoreEntry {
   id: string;
   playerName: string;
@@ -274,6 +276,12 @@ implements LeaderboardRepository {
       "hard",
     ];
 
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => abortController.abort(),
+      LEADERBOARD_REQUEST_TIMEOUT_MS,
+    );
+
     try {
       const results = await Promise.all(
         difficulties.map((difficulty) =>
@@ -286,7 +294,8 @@ implements LeaderboardRepository {
             .order("distance", { ascending: false })
             .order("survival_time", { ascending: false })
             .order("created_at", { ascending: true })
-            .limit(this.maximumEntries),
+            .limit(this.maximumEntries)
+            .abortSignal(abortController.signal),
         ),
       );
 
@@ -302,6 +311,8 @@ implements LeaderboardRepository {
       return entries;
     } catch {
       return this.cache.readAll();
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
