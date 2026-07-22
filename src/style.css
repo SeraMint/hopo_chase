@@ -1576,6 +1576,22 @@ html:not(.touch-input) .title-screen__controls--mobile {
   display: none !important;
 }
 
+.touch-input #game-over {
+  align-items: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.touch-input .game-over-panel {
+  max-height: calc(
+    100dvh -
+    max(16px, env(safe-area-inset-top)) -
+    max(16px, env(safe-area-inset-bottom))
+  );
+  scroll-padding-bottom: 35dvh;
+  -webkit-overflow-scrolling: touch;
+}
+
 .mobile-control-button small b {
   display: block;
   margin-top: 3px;

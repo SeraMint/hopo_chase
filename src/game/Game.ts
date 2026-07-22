@@ -1630,7 +1630,10 @@ export class Game {
 
       if (canEnterTopFive) {
         this.hud.resetScoreRegistration();
-        this.hud.focusPlayerName();
+
+        if (!this.isTouchDevice) {
+          this.hud.focusPlayerName();
+        }
       }
     } catch (error) {
       console.error("Failed to prepare leaderboard registration", error);
@@ -1642,7 +1645,10 @@ export class Game {
         // 조회 장애 때문에 정상 기록 등록까지 막지는 않습니다.
         this.hud.setScoreRegistrationVisible(true);
         this.hud.resetScoreRegistration();
-        this.hud.focusPlayerName();
+
+        if (!this.isTouchDevice) {
+          this.hud.focusPlayerName();
+        }
       }
     }
   }
