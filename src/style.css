@@ -170,6 +170,92 @@ input {
   pointer-events: none;
 }
 
+.mobile-controls {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 70;
+  display: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding:
+    16px
+    max(18px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-input .mobile-controls {
+  display: flex;
+}
+
+.mobile-controls__utility {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.mobile-control-button {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 50%;
+  color: #ffffff;
+  background: rgba(10, 15, 18, 0.74);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-control-button span {
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.mobile-control-button small {
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.mobile-control-button--fire {
+  width: 82px;
+  height: 82px;
+  border-color: rgba(255, 126, 90, 0.75);
+  background: rgba(132, 35, 23, 0.78);
+}
+
+.mobile-control-button--grenade {
+  border-color: rgba(255, 196, 92, 0.68);
+}
+
+.mobile-control-button--reload {
+  width: 60px;
+  height: 60px;
+  border-color: rgba(129, 205, 255, 0.66);
+}
+
+.mobile-control-button:active {
+  filter: brightness(1.22);
+  transform: scale(0.94);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mobile-controls {
+    display: none;
+  }
+}
+
 #reload-warning {
   position: fixed;
   left: 50%;
@@ -941,6 +1027,8 @@ input {
       rgba(198, 226, 239, 0.82)
     );
   backdrop-filter: blur(5px);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 #title-screen[hidden] {
@@ -1249,5 +1337,45 @@ input {
 
   .title-screen__controls {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (orientation: portrait) and (any-pointer: coarse) {
+  #title-screen {
+    display: block;
+    height: 100dvh;
+    min-height: 0;
+    padding:
+      max(14px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(24px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .title-screen__panel {
+    width: min(100%, 620px);
+    margin: 0 auto;
+    padding: 24px 18px;
+  }
+
+  .title-screen__description {
+    margin: 14px auto 16px;
+    line-height: 1.45;
+  }
+
+  .title-screen__controls {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .title-screen__controls div {
+    min-height: 54px;
+    padding: 7px 6px;
+  }
+
+  .title-screen__reward {
+    margin-bottom: 16px;
   }
 }

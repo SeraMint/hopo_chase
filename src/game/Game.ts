@@ -85,6 +85,7 @@ export class Game {
   private readonly hud: HudController;
   private readonly renderingPipeline: DefaultRenderingPipeline;
   private readonly graphicsQuality: GraphicsQuality;
+  private readonly isTouchDevice: boolean;
   private renderScale = 1;
   private performanceSampleTime = 0;
   private performanceSampleFrames = 0;
@@ -99,6 +100,12 @@ export class Game {
       GAME_CONFIG.defaultDifficulty;
 
   private grenadePointerId:
+    number | null = null;
+
+  private mobileAimPointerId:
+    number | null = null;
+
+  private mobileGrenadePointerId:
     number | null = null;
 
   private elapsedTime = 0;
@@ -116,6 +123,17 @@ export class Game {
 
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.isTouchDevice =
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia(
+        "(any-pointer: coarse)",
+      ).matches;
+
+    document.documentElement.classList.toggle(
+      "touch-input",
+      this.isTouchDevice,
+    );
+
     this.graphicsQuality = this.detectGraphicsQuality();
 
     this.engine = new Engine(canvas, true, {
@@ -199,6 +217,7 @@ export class Game {
     this.hud = new HudController();
 
     this.registerInputEvents();
+    this.registerMobileInputEvents();
     this.registerWindowEvents();
     this.registerUiEvents();
 
@@ -634,28 +653,46 @@ export class Game {
     this.canvas.addEventListener(
       "pointermove",
       (event) => {
-        this.hud.moveCrosshair(
+        if (
+          event.pointerType === "touch" &&
+          event.pointerId !==
+            this.mobileAimPointerId
+        ) {
+          return;
+        }
+
+        if (event.pointerType === "touch") {
+          event.preventDefault();
+        }
+
+        this.updateAimFromClientPosition(
           event.clientX,
           event.clientY,
         );
+      },
+    );
 
-        const rect =
-          this.canvas.getBoundingClientRect();
+    this.canvas.addEventListener(
+      "pointerup",
+      (event) => {
+        if (
+          event.pointerType === "touch" &&
+          event.pointerId ===
+            this.mobileAimPointerId
+        ) {
+          this.mobileAimPointerId = null;
+        }
+      },
+    );
 
-        const normalizedY =
-          rect.height > 0
-            ? (event.clientY - rect.top) /
-              rect.height
-            : 0.5;
-
-        this.grenade.setAimPointer(
-          this.scene.pointerX,
-          this.scene.pointerY,
-          normalizedY,
-        );
-
-        if (this.state === "playing") {
-          this.hud.setCrosshairVisible(true);
+    this.canvas.addEventListener(
+      "pointercancel",
+      (event) => {
+        if (
+          event.pointerId ===
+          this.mobileAimPointerId
+        ) {
+          this.mobileAimPointerId = null;
         }
       },
     );
@@ -705,6 +742,235 @@ export class Game {
     );
   }
 
+  private updateAimFromClientPosition(
+    clientX: number,
+    clientY: number,
+  ): void {
+    this.hud.moveCrosshair(
+      clientX,
+      clientY,
+    );
+
+    const rect =
+      this.canvas.getBoundingClientRect();
+
+    const normalizedY =
+      rect.height > 0
+        ? (clientY - rect.top) /
+          rect.height
+        : 0.5;
+
+    this.grenade.setAimPointer(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      normalizedY,
+    );
+
+    if (this.state === "playing") {
+      this.hud.setCrosshairVisible(true);
+    }
+  }
+
+  private registerMobileInputEvents(): void {
+    if (!this.isTouchDevice) {
+      return;
+    }
+
+    const stopTouchEvent = (
+      event: PointerEvent,
+    ): void => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    this.hud.mobileFireButton.addEventListener(
+      "pointerdown",
+      (event) => {
+        stopTouchEvent(event);
+
+        if (
+          event.pointerType === "touch" &&
+          this.state === "playing"
+        ) {
+          this.handleFire();
+        }
+      },
+    );
+
+    this.hud.mobileReloadButton.addEventListener(
+      "pointerdown",
+      (event) => {
+        stopTouchEvent(event);
+
+        if (
+          event.pointerType === "touch" &&
+          this.state === "playing"
+        ) {
+          this.handleReload();
+        }
+      },
+    );
+
+    this.hud.mobileGrenadeButton.addEventListener(
+      "pointerdown",
+      (event) => {
+        stopTouchEvent(event);
+
+        if (
+          event.pointerType !== "touch" ||
+          this.state !== "playing" ||
+          this.mobileGrenadePointerId !== null
+        ) {
+          return;
+        }
+
+        if (
+          !this.handleMobileGrenadeAimStart(
+            event.clientY,
+          )
+        ) {
+          return;
+        }
+
+        this.mobileGrenadePointerId =
+          event.pointerId;
+
+        try {
+          this.hud.mobileGrenadeButton
+            .setPointerCapture(
+              event.pointerId,
+            );
+        } catch {
+          this.mobileGrenadePointerId = null;
+          this.grenade.cancelAim();
+          this.updateHud();
+        }
+      },
+    );
+
+    this.hud.mobileGrenadeButton.addEventListener(
+      "pointermove",
+      (event) => {
+        if (
+          event.pointerId !==
+            this.mobileGrenadePointerId ||
+          !this.grenade.isAiming
+        ) {
+          return;
+        }
+
+        stopTouchEvent(event);
+
+        const rect =
+          this.canvas.getBoundingClientRect();
+
+        const normalizedY =
+          rect.height > 0
+            ? (event.clientY - rect.top) /
+              rect.height
+            : 0.5;
+
+        this.grenade.setAimPointer(
+          this.scene.pointerX,
+          this.scene.pointerY,
+          normalizedY,
+        );
+      },
+    );
+
+    this.hud.mobileGrenadeButton.addEventListener(
+      "pointerup",
+      (event) => {
+        if (
+          event.pointerId !==
+          this.mobileGrenadePointerId
+        ) {
+          return;
+        }
+
+        stopTouchEvent(event);
+        this.mobileGrenadePointerId = null;
+        this.handleGrenadeRelease();
+      },
+    );
+
+    const cancelMobileGrenade = (
+      event: PointerEvent,
+    ): void => {
+      if (
+        event.pointerId !==
+        this.mobileGrenadePointerId
+      ) {
+        return;
+      }
+
+      stopTouchEvent(event);
+      this.mobileGrenadePointerId = null;
+      this.grenade.cancelAim();
+      this.updateHud();
+    };
+
+    this.hud.mobileGrenadeButton.addEventListener(
+      "pointercancel",
+      cancelMobileGrenade,
+    );
+
+    this.hud.mobileGrenadeButton.addEventListener(
+      "lostpointercapture",
+      cancelMobileGrenade,
+    );
+  }
+
+  private handleMobileGrenadeAimStart(
+    clientY: number,
+  ): boolean {
+    if (this.gun.isReloading) {
+      this.showTemporaryStatus(
+        "재장전 중에는 수류탄을 사용할 수 없습니다.",
+      );
+      return false;
+    }
+
+    const rect =
+      this.canvas.getBoundingClientRect();
+
+    const normalizedY =
+      rect.height > 0
+        ? (clientY - rect.top) /
+          rect.height
+        : 0.5;
+
+    const result = this.grenade.beginAim(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      normalizedY,
+    );
+
+    if (result === "empty") {
+      this.showTemporaryStatus(
+        "수류탄이 없습니다. 몬스터를 10회 타격하면 1발을 획득합니다.",
+      );
+      return false;
+    }
+
+    if (result === "cooldown") {
+      this.showTemporaryStatus(
+        `수류탄 재사용까지 ${this.grenade.cooldownRemaining.toFixed(1)}초`,
+      );
+      return false;
+    }
+
+    if (result !== "started") {
+      return false;
+    }
+
+    this.hud.setStatus(
+      "수류탄 버튼을 위로 밀면 멀리, 아래로 밀면 가까워집니다.",
+    );
+    this.updateHud();
+    return true;
+  }
+
   private registerWindowEvents(): void {
     window.addEventListener(
       "resize",
@@ -714,6 +980,8 @@ export class Game {
     window.addEventListener(
       "blur",
       () => {
+        this.clearMobilePointerState();
+
         if (this.grenade.isAiming) {
           this.grenade.cancelAim();
           this.releaseGrenadePointerCapture();
@@ -723,10 +991,54 @@ export class Game {
     );
   }
 
+  private clearMobilePointerState(): void {
+    const grenadePointerId =
+      this.mobileGrenadePointerId;
+
+    this.mobileAimPointerId = null;
+    this.mobileGrenadePointerId = null;
+
+    if (grenadePointerId === null) {
+      return;
+    }
+
+    try {
+      if (
+        this.hud.mobileGrenadeButton
+          .hasPointerCapture(
+            grenadePointerId,
+          )
+      ) {
+        this.hud.mobileGrenadeButton
+          .releasePointerCapture(
+            grenadePointerId,
+          );
+      }
+    } catch {
+      // The browser may already have released the touch pointer.
+    }
+  }
+
   private handlePointerDown(
     event: PointerEvent,
   ): void {
     if (this.state !== "playing") {
+      return;
+    }
+
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+
+      if (this.mobileAimPointerId === null) {
+        this.mobileAimPointerId =
+          event.pointerId;
+
+        this.updateAimFromClientPosition(
+          event.clientX,
+          event.clientY,
+        );
+      }
+
       return;
     }
 
@@ -1310,6 +1622,7 @@ export class Game {
       return;
     }
 
+    this.clearMobilePointerState();
     this.state = "gameOver";
     this.grenade.cancelAim();
     this.releaseGrenadePointerCapture();
@@ -1366,6 +1679,7 @@ export class Game {
   }
 
   private returnToTitle(): void {
+    this.clearMobilePointerState();
     this.state = "title";
     this.cameraShakeTrauma = 0;
     this.cameraShakeTime = 0;
@@ -1410,6 +1724,7 @@ export class Game {
       return;
     }
 
+    this.clearMobilePointerState();
     this.startBackgroundMusic();
     this.cameraShakeTrauma = 0;
     this.cameraShakeTime = 0;

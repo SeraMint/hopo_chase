@@ -134,6 +134,21 @@ export class HudController {
       "#sound-toggle",
     );
 
+  public readonly mobileFireButton =
+    getElement<HTMLButtonElement>(
+      "#mobile-fire-button",
+    );
+
+  public readonly mobileGrenadeButton =
+    getElement<HTMLButtonElement>(
+      "#mobile-grenade-button",
+    );
+
+  public readonly mobileReloadButton =
+    getElement<HTMLButtonElement>(
+      "#mobile-reload-button",
+    );
+
   private readonly helpElement =
     document.querySelector<HTMLElement>(
       "#help",
