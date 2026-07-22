@@ -87,6 +87,9 @@ export class Game {
   private readonly renderingPipeline: DefaultRenderingPipeline;
   private readonly graphicsQuality: GraphicsQuality;
   private readonly isTouchDevice: boolean;
+  private readonly reducedMotionQuery = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  );
   private renderScale = 1;
   private performanceSampleTime = 0;
   private performanceSampleFrames = 0;
@@ -1501,6 +1504,10 @@ export class Game {
   }
 
   private addCameraShake(amount: number): void {
+    if (this.reducedMotionQuery.matches) {
+      return;
+    }
+
     this.cameraShakeTrauma = Math.min(1, this.cameraShakeTrauma + amount);
   }
 

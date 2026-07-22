@@ -1621,3 +1621,14 @@ html:not(.touch-input) .title-screen__controls--mobile {
     0 0 0 3px rgba(129, 205, 255, 0.24),
     0 6px 20px rgba(0, 0, 0, 0.34);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
