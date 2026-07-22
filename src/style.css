@@ -199,6 +199,10 @@ input {
   display: flex;
 }
 
+.mobile-controls[hidden] {
+  display: none;
+}
+
 .mobile-controls__utility {
   display: flex;
   align-items: flex-end;
@@ -1567,6 +1571,10 @@ input {
 
 .mobile-control-button--busy {
   opacity: 0.62;
+}
+
+.mobile-control-button[aria-disabled="true"] {
+  cursor: default;
 }
 
 .mobile-control-button--active {

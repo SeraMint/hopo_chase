@@ -149,6 +149,11 @@ export class HudController {
       "#mobile-reload-button",
     );
 
+  private readonly mobileControlsElement =
+    getElement<HTMLDivElement>(
+      "#mobile-controls",
+    );
+
   private readonly mobileFireAmmoElement =
     getElement<HTMLElement>(
       "#mobile-fire-ammo",
@@ -968,6 +973,36 @@ export class HudController {
       view.grenadeCooldownRemaining > 0,
     );
 
+    this.mobileFireButton.setAttribute(
+      "aria-disabled",
+      String(
+        !view.isPlaying ||
+        view.needsReload ||
+        view.isReloading ||
+        view.shotCooldownRemaining > 0 ||
+        view.isGrenadeAiming,
+      ),
+    );
+
+    this.mobileReloadButton.setAttribute(
+      "aria-disabled",
+      String(
+        !view.isPlaying ||
+        view.isReloading ||
+        view.currentAmmo >= view.magazineSize,
+      ),
+    );
+
+    this.mobileGrenadeButton.setAttribute(
+      "aria-disabled",
+      String(
+        !view.isPlaying ||
+        view.isReloading ||
+        view.grenadeAmmo <= 0 ||
+        view.grenadeCooldownRemaining > 0,
+      ),
+    );
+
     this.setHidden(
       this.grenadeAimHint,
       !(
@@ -1521,6 +1556,17 @@ export class HudController {
   ): void {
     this.crosshair.hidden =
       !visible;
+  }
+
+  public setMobileControlsVisible(
+    visible: boolean,
+  ): void {
+    this.mobileControlsElement.hidden = !visible;
+    this.mobileControlsElement.inert = !visible;
+    this.mobileControlsElement.setAttribute(
+      "aria-hidden",
+      String(!visible),
+    );
   }
 
   public setTitleVisible(

@@ -223,6 +223,7 @@ export class Game {
 
     this.hud.setGameOverVisible(false);
     this.hud.setTitleVisible(true);
+    this.hud.setMobileControlsVisible(false);
     this.updateHud();
 
     this.backgroundMusic.loop = true;
@@ -1812,6 +1813,7 @@ export class Game {
 
     this.hud.setScoreRegistrationVisible(false);
     this.hud.setGameOverVisible(true);
+    this.hud.setMobileControlsVisible(false);
     this.hud.setCrosshairVisible(false);
     void this.prepareGameOverLeaderboard(gameOverSequence);
     this.updateHud();
@@ -1881,6 +1883,7 @@ export class Game {
     this.hud.resetScoreRegistration();
     this.hud.setGameOverVisible(false);
     this.hud.setTitleVisible(true);
+    this.hud.setMobileControlsVisible(false);
     this.hud.setCrosshairVisible(false);
     this.hud.setStatus(
       "게임 시작 버튼을 눌러주세요.",
@@ -1930,6 +1933,7 @@ export class Game {
     this.hud.resetScoreRegistration();
     this.hud.setTitleVisible(false);
     this.hud.setGameOverVisible(false);
+    this.hud.setMobileControlsVisible(true);
     this.hud.setCrosshairVisible(
       this.pointerInsideCanvas,
     );
