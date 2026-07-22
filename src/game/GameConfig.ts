@@ -189,7 +189,7 @@ export const GAME_CONFIG = {
   scoring: {
     vehicleMetersPerSecond: 22,
 
-    leaderboardSize: 10,
+    leaderboardSize: 5,
     storageKey: "hopo-chase-local-leaderboard-v2",
 
     ranks: [
