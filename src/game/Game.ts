@@ -710,13 +710,29 @@ export class Game {
           event.pointerId ===
             this.mobileAimPointerId
         ) {
-          this.mobileAimPointerId = null;
+          this.releaseMobileAimPointer(
+            event.pointerId,
+          );
         }
       },
     );
 
     this.canvas.addEventListener(
       "pointercancel",
+      (event) => {
+        if (
+          event.pointerId ===
+          this.mobileAimPointerId
+        ) {
+          this.releaseMobileAimPointer(
+            event.pointerId,
+          );
+        }
+      },
+    );
+
+    this.canvas.addEventListener(
+      "lostpointercapture",
       (event) => {
         if (
           event.pointerId ===
@@ -740,7 +756,14 @@ export class Game {
 
     this.canvas.addEventListener(
       "pointerleave",
-      () => {
+      (event) => {
+        if (
+          event.pointerType === "touch" &&
+          event.pointerId === this.mobileAimPointerId
+        ) {
+          return;
+        }
+
         this.pointerInsideCanvas = false;
         this.hud.setCrosshairVisible(false);
       },
@@ -1017,7 +1040,10 @@ export class Game {
 
       window.addEventListener(
         "orientationchange",
-        resizeForMobileViewport,
+        () => {
+          this.cancelMobileInteractions();
+          resizeForMobileViewport();
+        },
       );
 
       window.visualViewport?.addEventListener(
@@ -1028,24 +1054,42 @@ export class Game {
 
     window.addEventListener(
       "blur",
-      () => {
-        this.clearMobilePointerState();
+      () => this.cancelMobileInteractions(),
+    );
 
-        if (this.grenade.isAiming) {
-          this.grenade.cancelAim();
-          this.releaseGrenadePointerCapture();
-          this.updateHud();
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.hidden) {
+          this.cancelMobileInteractions();
         }
       },
     );
   }
 
+  private cancelMobileInteractions(): void {
+    this.clearMobilePointerState();
+
+    if (this.grenade.isAiming) {
+      this.grenade.cancelAim();
+      this.releaseGrenadePointerCapture();
+      this.updateHud();
+    }
+  }
+
   private clearMobilePointerState(): void {
+    const aimPointerId =
+      this.mobileAimPointerId;
     const grenadePointerId =
       this.mobileGrenadePointerId;
 
-    this.mobileAimPointerId = null;
     this.mobileGrenadePointerId = null;
+
+    if (aimPointerId !== null) {
+      this.releaseMobileAimPointer(
+        aimPointerId,
+      );
+    }
 
     if (grenadePointerId === null) {
       return;
@@ -1068,6 +1112,22 @@ export class Game {
     }
   }
 
+  private releaseMobileAimPointer(
+    pointerId: number,
+  ): void {
+    if (this.mobileAimPointerId === pointerId) {
+      this.mobileAimPointerId = null;
+    }
+
+    try {
+      if (this.canvas.hasPointerCapture(pointerId)) {
+        this.canvas.releasePointerCapture(pointerId);
+      }
+    } catch {
+      // The browser may already have released the touch pointer.
+    }
+  }
+
   private handlePointerDown(
     event: PointerEvent,
   ): void {
@@ -1081,6 +1141,14 @@ export class Game {
       if (this.mobileAimPointerId === null) {
         this.mobileAimPointerId =
           event.pointerId;
+
+        try {
+          this.canvas.setPointerCapture(
+            event.pointerId,
+          );
+        } catch {
+          // Continue tracking while the pointer remains on the canvas.
+        }
 
         this.updateAimFromClientPosition(
           event.clientX,
