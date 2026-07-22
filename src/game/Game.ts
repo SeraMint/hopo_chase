@@ -1063,9 +1063,41 @@ export class Game {
       () => {
         if (document.hidden) {
           this.cancelMobileInteractions();
+
+          if (this.isTouchDevice) {
+            this.pauseMobileAudio();
+          }
+        } else if (this.isTouchDevice) {
+          this.resumeMobileAudio();
         }
       },
     );
+  }
+
+  private pauseMobileAudio(): void {
+    this.backgroundMusic.pause();
+
+    for (const channels of this.soundPools.values()) {
+      for (const audio of channels) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    }
+
+    void this.soundAudioContext.suspend().catch(() => {
+      // 일부 모바일 브라우저는 비활성 상태에서 컨텍스트 변경을 거부합니다.
+    });
+  }
+
+  private resumeMobileAudio(): void {
+    if (!this.soundEnabled) {
+      return;
+    }
+
+    void this.soundAudioContext.resume().catch(() => {
+      // 사용자 제스처가 다시 필요하면 다음 발사 입력에서 재개됩니다.
+    });
+    this.startBackgroundMusic();
   }
 
   private cancelMobileInteractions(): void {
@@ -1951,6 +1983,13 @@ export class Game {
 
   public start(): void {
     this.engine.runRenderLoop(() => {
+      if (
+        this.isTouchDevice &&
+        document.hidden
+      ) {
+        return;
+      }
+
       const deltaTime = Math.min(
         this.engine.getDeltaTime() / 1000,
         0.05,
